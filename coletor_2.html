@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head> 
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coletor de Leituras - Sistema 2 - Online</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><path fill='%230056b3' d='M0 256a256 256 0 1 1 512 0A256 256 0 1 1 0 256zm320 96c0-26.9-16.5-49.9-40-59.3V88c0-13.3-10.7-24-24-24s-24 10.7-24 24v204.7c-23.5 9.5-40 32.5-40 59.3c0 35.3 28.7 64 64 64s64-28.7 64-64zM144 176a32 32 0 1 0 0-64 32 32 0 1 0 0 64zm-16 80a32 32 0 1 0 -64 0 32 32 0 1 0 64 0zm288 32a32 32 0 1 0 0-64 32 32 0 1 0 0 64z'/></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-gray-100 min-h-screen font-sans pb-24 selection:bg-[#0056b3] selection:text-white">
+
+    <div id="tela-login" class="flex items-center justify-center min-h-screen bg-slate-900 px-4">
+        <div class="bg-slate-800 p-8 rounded-xl border border-slate-700 shadow-2xl w-full max-w-sm">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-extrabold text-[#0056b3] tracking-wider">SANESI<span class="text-white">SABESP</span></h1>
+                <p class="text-xs text-gray-400 mt-1 uppercase tracking-widest">Coletor · Sistema 2</p>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-xs text-gray-400 uppercase font-semibold mb-1"><i class="fa-solid fa-id-badge mr-1"></i> Matrícula</label>
+                <input type="text" id="login-matricula" class="w-full p-4 rounded-lg bg-slate-950 border border-slate-600 focus:border-[#0056b3] focus:outline-none text-white font-mono text-center text-lg tracking-widest transition-all">
+            </div>
+            <div class="mb-8">
+                <label class="block text-xs text-gray-400 uppercase font-semibold mb-1"><i class="fa-solid fa-lock mr-1"></i> Senha</label>
+                <input type="password" id="login-senha" class="w-full p-4 rounded-lg bg-slate-950 border border-slate-600 focus:border-[#0056b3] focus:outline-none text-white text-center text-lg tracking-widest transition-all">
+            </div>
+            <button onclick="entrarAppCampo()" id="btn-login" class="w-full bg-[#0056b3] hover:bg-blue-800 text-white font-bold p-4 rounded-lg transition-all shadow-[0_0_15px_rgba(0,86,179,0.4)]">
+                Acessar Sistema
+            </button>
+        </div>
+    </div>
+
+    <div id="tela-principal" class="hidden max-w-md mx-auto p-4">
+        
+        <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl mb-6 shadow-md flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold text-white leading-tight">Minha Rota</h1>
+                <p id="nome-leiturista" class="text-xs text-[#0056b3] font-semibold truncate w-40">Leiturista</p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="sincronizarDadosOffline()" id="btn-sync-offline" class="bg-amber-600 hover:bg-amber-500 text-white px-3 py-2 rounded-lg font-bold transition-all shadow text-xs flex items-center justify-center gap-1" title="Enviar Leituras Offline">
+                    <i class="fa-solid fa-rotate"></i> Sicro.
+                </button>
+                <button onclick="limparFotosSincronizadas()" id="btn-limpar-fotos" class="bg-slate-700 hover:bg-slate-600 text-white w-9 h-9 rounded-lg transition-all shadow text-sm flex items-center justify-center" title="Liberar Fotos Já Enviadas (economiza espaço)">
+                    <i class="fa-solid fa-broom"></i>
+                </button>
+                <button onclick="buscarRoteiroSupabase()" class="bg-slate-700 hover:bg-slate-600 text-white w-9 h-9 rounded-lg transition-all shadow text-sm flex items-center justify-center" title="Sincronizar Nuvem">
+                    <i class="fa-solid fa-cloud-arrow-down"></i>
+                </button>
+                <button onclick="sairAppCampo()" class="text-xs bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white px-3 py-2 rounded-lg font-bold transition-all border border-red-500/20">
+                    Sair
+                </button>
+            </div>
+        </div>
+
+        <h1 class="text-2xl font-bold mb-4 text-center text-white tracking-wide">Leitura Grande Consumidor</h1>
+        
+        <div id="painel-progresso" class="hidden bg-slate-800 p-4 rounded-xl border border-slate-700 mb-6 text-center shadow-lg">
+            <p class="text-sm text-gray-400 uppercase tracking-wider font-semibold">Progresso das Leituras</p>
+            <div class="text-3xl font-extrabold text-[#0056b3] mt-1">
+                <span id="qtd-concluidos">0</span> / <span id="qtd-total">0</span>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">Leituras realizadas</p>
+            <p id="aviso-sem-gps" class="hidden text-xs text-red-400 font-bold mt-2">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i><span id="qtd-sem-gps">0</span> leitura(s) sem localização
+            </p>
+        </div>
+
+        <div id="area-upload" class="bg-slate-800 p-4 rounded-xl border border-dashed border-slate-600 mb-6 text-center">
+            <label class="block text-sm font-medium text-gray-300 mb-2">Alternativa Offline: Selecione a Planilha (.xlsx)</label>
+            <input type="file" id="input-excel" accept=".xlsx, .xls" class="hidden">
+            <button onclick="document.getElementById('input-excel').click()" class="w-full py-3 px-4 rounded-lg bg-[#0056b3] hover:bg-blue-800 font-bold text-sm transition-all shadow-lg text-white">
+                📊 Carregar Arquivo Excel Local
+            </button>
+        </div>
+
+        <div id="area-recuperacao" class="hidden bg-slate-800 p-4 rounded-xl border border-amber-600 mb-6 text-center shadow-[0_0_15px_rgba(217,119,6,0.2)]">
+            <p class="text-amber-500 font-bold mb-1">⚠️ Roteiro em Andamento Detectado</p>
+            <p class="text-xs text-gray-400 mb-4">Existem leituras salvas localmente neste aparelho.</p>
+            <div class="flex gap-2">
+                <button onclick="limparMemoriaTotal()" class="w-1/3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 font-bold text-xs text-gray-300">
+                    Descartar
+                </button>
+                <button onclick="recuperarBackupDoBanco()" class="w-2/3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 font-bold text-xs text-white">
+                    🔄 Recuperar Dados de Campo
+                </button>
+            </div>
+        </div>
+
+        <div id="area-pesquisa" class="hidden mb-4">
+            <div id="area-agrupamento" class="hidden mb-3">
+                <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Separar por Rua</label>
+                <select id="select-endereco" onchange="filtrarLista()" class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:border-[#0056b3] text-sm shadow-md cursor-pointer">
+                    <option value="">🛣️ Mostrar Todo o Roteiro (Ou por Ruas)</option>
+                </select>
+            </div>
+
+            <input type="text" id="input-pesquisa" onkeyup="filtrarLista()" placeholder="🔍 Pesquisar Endereço ou hidrômetro..." class="w-full p-3 rounded-lg bg-slate-800 text-white border border-slate-600 focus:outline-none focus:border-[#0056b3] shadow-md text-sm">
+            
+            <div class="flex flex-col gap-3 mt-3 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 shadow-inner">
+                <label class="flex items-center cursor-pointer select-none">
+                    <div class="relative">
+                        <input type="checkbox" id="check-pendentes" onchange="filtrarLista()" class="sr-only">
+                        <div class="block bg-slate-700 w-10 h-6 rounded-full transition-colors duration-300" id="toggle-bg-pendentes"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-300" id="toggle-dot-pendentes"></div>
+                    </div>
+                    <span class="ml-3 text-sm font-medium text-gray-300" id="texto-filtro-pendentes">Mostrar apenas pendentes</span>
+                </label>
+
+                <label class="flex items-center cursor-pointer select-none">
+                    <div class="relative">
+                        <input type="checkbox" id="check-hidrometro" onchange="filtrarLista()" class="sr-only">
+                        <div class="block bg-slate-700 w-10 h-6 rounded-full transition-colors duration-300" id="toggle-bg-hidrometro"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-300" id="toggle-dot-hidrometro"></div>
+                    </div>
+                    <span class="ml-3 text-sm font-medium text-gray-300" id="texto-filtro-hidrometro">Mostrar apenas com hidrômetro</span>
+                </label>
+
+                <label class="flex items-center cursor-pointer select-none">
+                    <div class="relative">
+                        <input type="checkbox" id="check-ordenacao" checked onchange="alternarModoOrdenacao()" class="sr-only">
+                        <div class="block bg-[#0056b3] w-10 h-6 rounded-full transition-colors duration-300" id="toggle-bg-ordenacao"></div>
+                        <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full translate-x-4 transition-transform duration-300" id="toggle-dot-ordenacao"></div>
+                    </div>
+                    <span class="ml-3 text-sm font-medium text-[#0056b3]" id="texto-filtro-ordenacao">Ordenar por rua e número (desligue p/ ordem da planilha)</span>
+                </label>
+            </div>
+
+            <button onclick="abrirRotaNoMaps()" class="w-full mt-3 py-3 px-4 rounded-lg bg-slate-700 hover:bg-slate-600 font-bold text-sm transition-all shadow text-white flex items-center justify-center gap-2">
+                <i class="fa-brands fa-google"></i> Ver Rota no Google Maps (lista visível)
+            </button>
+        </div>
+
+        <div id="lista-fornecimentos" class="space-y-3">
+            <p class="text-center text-sm text-gray-500 italic mt-10">Aguardando importação de Tarefa...</p>
+        </div>
+
+        <div id="area-exportacao" class="hidden fixed bottom-0 left-0 right-0 p-4 bg-slate-900 border-t border-slate-700 shadow-[0_-10px_15px_rgba(0,0,0,0.5)]">
+            <button id="btn-exportar-zip" onclick="exportarRoteiroCompletoZIP()" class="w-full max-w-md mx-auto block py-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold text-white shadow-lg tracking-wide text-lg transition-all">
+                📦 EXPORTAR TAREFA COMPLETA (ZIP)
+            </button>
+        </div>
+    </div>
+
+    <div id="modal-leitura" class="hidden max-w-md mx-auto bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-700 my-4">
+        <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+            <h2 class="text-xl font-bold text-white">Registrar Leitura</h2>
+            <button onclick="fecharModal()" class="text-gray-400 hover:text-white text-xl p-1">&times;</button>
+        </div>
+        
+        <div class="bg-slate-900/50 p-3 rounded-lg mb-4 text-xs space-y-1 border border-slate-700/50">
+            <p><span class="text-gray-400">Fornecimento:</span> <span id="info-codigo" class="font-bold text-sm text-yellow-400"></span></p>
+            <p><span class="text-gray-400">Endereço:</span> <span id="info-endereco" class="text-gray-200"></span></p>
+            <p><span class="text-gray-400">Hidrômetro:</span> <span id="info-hidrometro" class="text-gray-200"></span></p>
+            <p><span class="text-gray-400">Leitura Anterior:</span> <span id="info-anterior" class="text-gray-200 font-semibold"></span></p>
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Leitura Atual</label>
+            <input type="number" id="input-leitura" class="w-full p-4 rounded-lg bg-slate-950 text-white text-xl font-mono border-2 border-slate-700 focus:outline-none focus:border-[#0056b3] text-center tracking-widest" placeholder="0000">
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Observação (Opcional)</label>
+            <textarea id="input-observacao" rows="2" class="w-full p-3 rounded-lg bg-slate-950 text-white text-sm border border-slate-700 focus:outline-none focus:border-[#0056b3] placeholder-gray-600" placeholder="Ex: Hidrômetro quebrado, casa fechada..."></textarea>
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Evidências Fotográficas</label>
+            <div class="flex gap-2">
+                <div class="w-1/2">
+                    <input type="file" id="input-foto-1" accept="image/*" capture="environment" class="hidden" onchange="processarCapturaFoto(1)">
+                    <button id="btn-foto-1" onclick="document.getElementById('input-foto-1').click()" class="w-full py-3 rounded-lg bg-slate-950 border border-slate-600 font-bold text-xs text-gray-300 transition-all">
+                        📸 Foto 1 (HD)
+                    </button>
+                </div>
+                <div class="w-1/2">
+                    <input type="file" id="input-foto-2" accept="image/*" capture="environment" class="hidden" onchange="processarCapturaFoto(2)">
+                    <button id="btn-foto-2" onclick="document.getElementById('input-foto-2').click()" class="w-full py-3 rounded-lg bg-slate-950 border border-slate-600 font-bold text-xs text-gray-300 transition-all">
+                        📸 Foto 2 (Imóvel)
+                    </button>
+                </div>
+            </div>
+            <p id="status-compressao" class="text-[10px] text-gray-500 mt-2 text-center">As imagens serão otimizadas automaticamente para economizar espaço.</p>
+        </div>
+
+        <div class="flex gap-3">
+            <button onclick="fecharModal()" class="w-1/3 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 font-bold text-sm">Voltar</button>
+            <button id="btn-salvar-modal" onclick="salvarDadosEmCampo()" class="w-2/3 py-3 rounded-lg bg-[#0056b3] hover:bg-blue-700 font-bold text-sm shadow-lg transition-all flex justify-center items-center gap-2">
+                <i class="fa-solid fa-cloud-arrow-up hidden" id="icone-nuvem"></i> 💾 SALVAR
+            </button>
+        </div>
+    </div>
+
+    <script>
+ // =================================================================
+// PROTETOR ANTI-CORS GLOBAL (INJETADO ANTES DA INICIALIZAÇÃO DO SUPABASE)
+// =================================================================
+(function() {
+    const fetchOriginal = window.fetch;
+    window.fetch = async function(url, init) {
+        if (init && init.headers) {
+            // Se for uma instância do objeto Headers nativo
+            if (init.headers instanceof Headers) {
+                if (init.headers.has('x-retry-count')) {
+                    init.headers.delete('x-retry-count');
+                }
+            } 
+            // Se for um objeto literal comum {}
+            else if (typeof init.headers === 'object') {
+                delete init.headers['x-retry-count'];
+                delete init.headers['X-Retry-Count'];
+            }
+        }
+        return fetchOriginal(url, init);
+    };
+})();
+
+// CONFIGURAÇÕES SUPABASE
+const SUPABASE_URL = window.location.origin + '/api-coletor';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE3ODM2NDg0NzAsImV4cCI6MjA5OTAwODQ3MH0.ttwwIn1wDch678PxAIFgz0y3cmnPYFWnngo_OwW8HMM';
+
+// Inicializa o cliente padrão de forma limpa
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // VARIÁVEIS GLOBAIS DA LÓGICA
+        let dadosInjetados = "##DADOS_ROTA##"; 
+        let idTarefaInjetada = "##ID_TAREFA##";
+        let db;
+        let bancoDadosRotas = [];
+        let indiceSelecionado = null;
+        let cacheFotosTemporarias = { foto1: null, foto2: null };
+        let agrupamentoEnderecosGlobais = {}; 
+        let agrupamentoRuasGlobais = {};
+        let ultimaListaFiltradaIndices = [];
+
+
+        // INICIALIZAÇÃO
+        window.onload = () => {
+            const cache = localStorage.getItem('leiturista_logado_2');
+            if(cache) {
+                funcionarioLogado = JSON.parse(cache);
+                mostrarTelaPrincipal();
+            } else {
+                document.getElementById('tela-login').classList.remove('hidden');
+            }
+
+            solicitarArmazenamentoPersistente();
+            verificarEspacoArmazenamento();
+        };
+
+        // Pede ao navegador para NÃO apagar automaticamente os dados do IndexedDB
+        // quando o aparelho estiver com pouco espaço. Sem isso, o navegador pode
+        // decidir sozinho limpar leituras ainda não sincronizadas em caso de aperto.
+        async function solicitarArmazenamentoPersistente() {
+            if (navigator.storage && navigator.storage.persist) {
+                try {
+                    const concedido = await navigator.storage.persist();
+                    console.log(concedido ? '✅ Armazenamento persistente concedido.' : '⚠️ Armazenamento persistente NÃO concedido pelo navegador.');
+                } catch (erro) {
+                    console.warn('Não foi possível solicitar armazenamento persistente:', erro);
+                }
+            }
+        }
+
+        // Verifica quanto espaço já está sendo usado e avisa o leiturista se estiver ficando cheio
+        async function verificarEspacoArmazenamento() {
+            if (!(navigator.storage && navigator.storage.estimate)) return null;
+            try {
+                const { usage, quota } = await navigator.storage.estimate();
+                const percentualUsado = quota ? (usage / quota) * 100 : 0;
+
+                if (percentualUsado >= 80) {
+                    alert(`⚠️ Atenção: o armazenamento do aparelho para este app está em ${percentualUsado.toFixed(0)}%.\n\nExporte o ZIP e use o botão "Liberar Fotos Enviadas" para evitar falhas ao salvar novas leituras.`);
+                }
+                return { usage, quota, percentualUsado };
+            } catch (erro) {
+                console.warn('Não foi possível verificar o espaço de armazenamento:', erro);
+                return null;
+            }
+        }
+
+        // --- SISTEMA DE LOGIN (SUPABASE) ---
+      
+async function entrarAppCampo() {
+    const matricula = document.getElementById('login-matricula').value.trim();
+    const senha = document.getElementById('login-senha').value;
+    const btn = document.getElementById('btn-login');
+    if(!matricula || !senha) return;
+    btn.innerHTML = 'Conectando...';
+    
+    try {
+        // Monta a URL de busca exatamente como o Supabase faria
+        const urlBusca = `${SUPABASE_URL}/rest/v1/perfis_2?matricula=eq.${matricula}&senha_app=eq.${senha}&select=*`;
+        
+        // Faz a requisição nativa (SEM os cabeçalhos de retry da biblioteca)
+        const resposta = await fetch(urlBusca, {
+            method: 'GET',
+            headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!resposta.ok) throw new Error("Erro na requisição");
+
+        const dados = await resposta.json();
+        const data = dados[0]; // Pega o primeiro perfil retornado
+
+        if (!data) {
+            alert("Credenciais inválidas!");
+        } else {
+            funcionarioLogado = data;
+            localStorage.setItem('leiturista_logado_2', JSON.stringify(data));
+            mostrarTelaPrincipal();
+            buscarRoteiroSupabase();
+        }
+    } catch (err) { 
+        console.error(err);
+        alert("Erro de conexão com o servidor."); 
+    } 
+    finally { 
+        btn.innerHTML = 'Acessar Sistema'; 
+    }
+}
+
+// Alterna da tela de login para a tela principal do app e atualiza o nome do leiturista
+function mostrarTelaPrincipal() {
+    document.getElementById('tela-login').classList.add('hidden');
+    document.getElementById('tela-principal').classList.remove('hidden');
+
+    const nomeEl = document.getElementById('nome-leiturista');
+    if (nomeEl && funcionarioLogado) {
+        nomeEl.textContent = funcionarioLogado.nome || funcionarioLogado.matricula || 'Leiturista';
+    }
+}
+
+// Faz logout: limpa a sessão salva e volta para a tela de login
+function sairAppCampo() {
+    if (!confirm("Deseja realmente sair do aplicativo?")) return;
+    localStorage.removeItem('leiturista_logado_2');
+    funcionarioLogado = null;
+    document.getElementById('tela-principal').classList.add('hidden');
+    document.getElementById('tela-login').classList.remove('hidden');
+}
+        // --- SISTEMA DE BUSCA NUVEM (SUPABASE) ---
+        async function buscarRoteiroSupabase() {
+            const container = document.getElementById('lista-fornecimentos');
+            container.innerHTML = `<p class="text-center mt-10 text-[#0056b3]">Conectando com o servidor... Baixando rota.</p>`;
+            
+            const headersSupabase = {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json'
+            };
+
+            try {
+                const urlTarefa = `${SUPABASE_URL}/rest/v1/tarefas_2?select=id&leiturista_id=eq.${funcionarioLogado.id}&status=eq.em_andamento&order=criado_em.desc&limit=1`;
+                const respTarefa = await fetch(urlTarefa, { method: 'GET', headers: headersSupabase });
+                if (!respTarefa.ok) throw new Error("Erro ao buscar tarefa");
+                const tarefas = await respTarefa.json();
+                const tarefaData = tarefas[0];
+
+                if (!tarefaData) {
+                    container.innerHTML = `<p class="text-center text-gray-500 mt-10 italic">Nenhuma rota online ativa encontrada no momento.</p>`;
+                    return;
+                }
+
+                const urlLeituras = `${SUPABASE_URL}/rest/v1/leituras_2?select=id,codigo,endereco,hidrometro,leitura_anterior,leitura_atual,observacao,status&tarefa_id=eq.${tarefaData.id}&order=endereco.asc`;
+                const respLeituras = await fetch(urlLeituras, { method: 'GET', headers: headersSupabase });
+                if (!respLeituras.ok) throw new Error("Erro ao buscar leituras");
+                const leiturasData = await respLeituras.json();
+                
+                if (leiturasData && leiturasData.length > 0) {
+                    bancoDadosRotas = [];
+                    const transacaoWrite = db.transaction(["roteiro"], "readwrite");
+                    const lojaWrite = transacaoWrite.objectStore("roteiro");
+                    lojaWrite.clear();
+
+                    leiturasData.forEach((linha, index) => {
+                        const novoItem = {
+                            idSupabase: linha.id, 
+                            codigo: linha.codigo,
+                            endereco: linha.endereco || "-",
+                            hidrometro: linha.hidrometro || "-",
+                            leituraAnterior: linha.leitura_anterior || "-",
+                            leituraAtual: linha.leitura_atual || '',
+                            observacao: linha.observacao || '',
+                            status: linha.status || 'pendente',
+                            foto1: null,
+                            foto2: null
+                        };
+                        bancoDadosRotas.push(novoItem);
+                        lojaWrite.put({ id: index, ...novoItem });
+                    });
+
+                    document.getElementById('area-upload').classList.add('hidden');
+                    document.getElementById('area-recuperacao').classList.add('hidden');
+                    document.getElementById('area-exportacao').classList.remove('hidden');
+                    
+                    calcularAgrupamentos();
+                    renderizarListaCards();
+                    alert("Rota online sincronizada com sucesso!");
+                }
+
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = `<p class="text-center text-red-500 mt-10">Falha ao buscar rota online. Tente a planilha offline se necessário.</p>`;
+            }
+        }
+
+        // BANCO DE DADOS LOCAL (INDEXEDDB)
+        const conexaoBanco = indexedDB.open("AuditoriaHidrometroDB_2", 1);
+        
+        conexaoBanco.onupgradeneeded = function(e) {
+            db = e.target.result;
+            db.createObjectStore("roteiro", { keyPath: "id" });
+        };
+
+        conexaoBanco.onsuccess = function(e) {
+            db = e.target.result;
+            verificarSeExisteBackup();
+            verificarInjecaoPython(); 
+        };
+
+        function verificarInjecaoPython() {
+            setTimeout(() => {
+                if (typeof dadosInjetados === 'object' && dadosInjetados.length > 0) {
+                    const tarefaSalva = localStorage.getItem('id_tarefa_atual_2');
+                    const transacaoCheck = db.transaction(["roteiro"], "readonly");
+                    const lojaCheck = transacaoCheck.objectStore("roteiro");
+                    const requestCheck = lojaCheck.count();
+
+                    requestCheck.onsuccess = function() {
+                        if (requestCheck.result === 0 || tarefaSalva !== idTarefaInjetada) {
+                            if(requestCheck.result > 0 && tarefaSalva !== idTarefaInjetada) {
+                                alert("⚠️ ATENÇÃO: Nova tarefa offline (" + idTarefaInjetada + ").\nDados antigos foram limpos.");
+                            }
+                            const transacaoWrite = db.transaction(["roteiro"], "readwrite");
+                            const lojaWrite = transacaoWrite.objectStore("roteiro");
+                            lojaWrite.clear(); 
+                            
+                            localStorage.setItem('id_tarefa_atual_2', idTarefaInjetada); 
+                            bancoDadosRotas = [];
+                            dadosInjetados.forEach((linha, index) => {
+                                if (linha.codigo && String(linha.codigo).trim() !== "") {
+                                    const novoItem = {
+                                        codigo: linha.codigo,
+                                        endereco: linha.endereco || "-",
+                                        hidrometro: linha.hidrometro || "-",
+                                        leituraAnterior: linha.leituraAnterior || "-",
+                                        leituraAtual: '',
+                                        observacao: '',
+                                        status: 'pendente',
+                                        foto1: null,
+                                        foto2: null
+                                    };
+                                    bancoDadosRotas.push(novoItem);
+                                    lojaWrite.put({ id: index, ...novoItem });
+                                }
+                            });
+                            document.getElementById('area-upload').classList.add('hidden');
+                            document.getElementById('area-recuperacao').classList.add('hidden');
+                            document.getElementById('area-exportacao').classList.remove('hidden');
+                            calcularAgrupamentos();
+                            renderizarListaCards();
+                        } else {
+                            document.getElementById('area-upload').classList.add('hidden');
+                            recuperarBackupDoBanco(); 
+                        }
+                    };
+                }
+            }, 500);
+        }
+
+        function verificarSeExisteBackup() {
+            const transacao = db.transaction(["roteiro"], "readonly");
+            const loja = transacao.objectStore("roteiro");
+            const contagem = loja.count();
+            
+            contagem.onsuccess = function() {
+                if (contagem.result > 0) {
+                    document.getElementById('area-recuperacao').classList.remove('hidden');
+                    document.getElementById('area-upload').classList.add('hidden');
+                }
+            };
+        }
+
+        function recuperarBackupDoBanco() {
+            const transacao = db.transaction(["roteiro"], "readonly");
+            const loja = transacao.objectStore("roteiro");
+            const requisicao = loja.getAll();
+            
+            requisicao.onsuccess = function() {
+                bancoDadosRotas = requisicao.result.map(item => {
+                    const { id, ...dadosLimpos } = item;
+                    return dadosLimpos;
+                });
+                document.getElementById('area-recuperacao').classList.add('hidden');
+                document.getElementById('area-exportacao').classList.remove('hidden');
+                
+                calcularAgrupamentos();
+                renderizarListaCards();
+            };
+        }
+
+        function limparMemoriaTotal() {
+            if(confirm("Deseja apagar permanentemente o roteiro pendente do aparelho?")) {
+                const transacao = db.transaction(["roteiro"], "readwrite");
+                const loja = transacao.objectStore("roteiro");
+                loja.clear();
+                
+                bancoDadosRotas = [];
+                agrupamentoEnderecosGlobais = {};
+                agrupamentoRuasGlobais = {};
+                document.getElementById('area-recuperacao').classList.add('hidden');
+                document.getElementById('area-upload').classList.remove('hidden');
+                renderizarListaCards();
+            }
+        }
+
+        // CARGA DO EXCEL OFFLINE
+        document.getElementById('input-excel').addEventListener('change', function(e) {
+            const arquivo = e.target.files[0];
+            if (!arquivo) return;
+            const leitor = new FileReader();
+            leitor.onload = function(evento) {
+                const dados = new Uint8Array(evento.target.result);
+                const pastaTrabalho = XLSX.read(dados, {type: 'array'});
+                const primeiraAba = pastaTrabalho.Sheets[pastaTrabalho.SheetNames[0]];
+                const jsonDados = XLSX.utils.sheet_to_json(primeiraAba, {range: 1, defval: ""});
+                processarDadosExcel(jsonDados);
+            };
+            leitor.readAsArrayBuffer(arquivo);
+        });
+
+        function processarDadosExcel(jsonDados) {
+            bancoDadosRotas = [];
+            const transacao = db.transaction(["roteiro"], "readwrite");
+            const loja = transacao.objectStore("roteiro");
+            loja.clear();
+
+            jsonDados.forEach((linha, index) => {
+                const codigoFornecimento = linha["Codigo do Fornecimento"] || "";
+                if (codigoFornecimento.toString().trim() !== "") {
+                    const novoItem = {
+                        codigo: codigoFornecimento,
+                        endereco: linha["Endereço"] || "-",
+                        hidrometro: linha["Hidrômetro"] || "-",
+                        leituraAnterior: linha["Leitura anterior"] || "-",
+                        leituraAtual: '',
+                        observacao: '',
+                        status: 'pendente',
+                        foto1: null,
+                        foto2: null
+                    };
+                    bancoDadosRotas.push(novoItem);
+                    loja.put({ id: index, ...novoItem });
+                }
+            });
+
+            document.getElementById('area-upload').classList.add('border-slate-700');
+            document.getElementById('area-exportacao').classList.remove('hidden');
+            
+            calcularAgrupamentos();
+            renderizarListaCards();
+        }
+
+        // FILTROS E LOGISTICA DE ENDEREÇO
+        function getEnderecoBase(enderecoCompleto) {
+            if (!enderecoCompleto) return "ENDEREÇO NÃO INFORMADO";
+            return enderecoCompleto.split('-')[0].trim().replace(/\s+/g, ' ');
+        }
+
+        function getNomeRua(enderecoCompleto) {
+            if (!enderecoCompleto) return "RUA NÃO INFORMADA";
+            let rua = enderecoCompleto.split(',')[0].trim();
+            if (rua === enderecoCompleto && enderecoCompleto.includes('-')) {
+                rua = enderecoCompleto.split('-')[0].trim();
+            }
+            return rua.replace(/\s+/g, ' ');
+        }
+
+        // Extrai o número da casa/lote do endereço (ex: "Rua Tal, 123 - Bairro" -> 123)
+        // Usado pra ordenar numericamente (10, 20, 100) em vez de alfabeticamente ("10", "100", "20")
+        function getNumeroEndereco(enderecoCompleto) {
+            if (!enderecoCompleto) return 0;
+            const match = enderecoCompleto.match(/\d+/);
+            return match ? parseInt(match[0], 10) : 0;
+        }
+
+        // Modo de ordenação da lista: 'planilha' (ordem original do arquivo/rota) ou 'rua_numero' (alfabética por rua + numérica por número)
+        let modoOrdenacao = 'rua_numero';
+
+        // Retorna os ÍNDICES do bancoDadosRotas na ordem de exibição escolhida,
+        // sem alterar o array original (o índice original continua sendo o ID salvo no IndexedDB)
+        function obterIndicesOrdenados() {
+            const indices = bancoDadosRotas.map((_, i) => i);
+            if (modoOrdenacao === 'planilha') return indices;
+
+            return indices.sort((a, b) => {
+                const itemA = bancoDadosRotas[a];
+                const itemB = bancoDadosRotas[b];
+                const ruaA = getNomeRua(itemA.endereco);
+                const ruaB = getNomeRua(itemB.endereco);
+                const compRua = ruaA.localeCompare(ruaB, 'pt-BR', { sensitivity: 'base', numeric: true });
+                if (compRua !== 0) return compRua;
+                return getNumeroEndereco(itemA.endereco) - getNumeroEndereco(itemB.endereco);
+            });
+        }
+
+        // Abre um único endereço no Google Maps. Se já tiver GPS salvo (leitura concluída
+        // com localização), usa as coordenadas exatas; senão, usa o texto do endereço.
+        function abrirEnderecoNoMaps(index) {
+            const item = bancoDadosRotas[index];
+            let destino;
+            if (item.latitude && item.longitude) {
+                destino = `${item.latitude},${item.longitude}`;
+            } else {
+                destino = `${item.endereco}`;
+            }
+            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destino)}`;
+            window.open(url, '_blank');
+        }
+
+        // Abre no Google Maps uma rota com vários pontos, usando exatamente a lista
+        // que está visível na tela no momento (respeita os filtros aplicados).
+        // O Maps limita o número de paradas numa rota via link; por isso funciona
+        // melhor filtrando por uma rua/trecho antes de usar este botão.
+        const LIMITE_PONTOS_ROTA_MAPS = 10;
+
+        function abrirRotaNoMaps() {
+            if (ultimaListaFiltradaIndices.length === 0) {
+                alert("Nenhum endereço visível na lista para montar rota. Ajuste os filtros e tente novamente.");
+                return;
+            }
+
+            if (ultimaListaFiltradaIndices.length > LIMITE_PONTOS_ROTA_MAPS) {
+                const continuar = confirm(
+                    `⚠️ Você tem ${ultimaListaFiltradaIndices.length} endereços visíveis, mas o Google Maps só aceita cerca de ${LIMITE_PONTOS_ROTA_MAPS} paradas por link.\n\n` +
+                    `Vou usar só os primeiros ${LIMITE_PONTOS_ROTA_MAPS}. Prefira filtrar por uma rua específica para pegar a rota inteira.\n\nContinuar mesmo assim?`
+                );
+                if (!continuar) return;
+            }
+
+            const indicesParaRota = ultimaListaFiltradaIndices.slice(0, LIMITE_PONTOS_ROTA_MAPS);
+            const enderecos = indicesParaRota.map(i => {
+                const item = bancoDadosRotas[i];
+                return (item.latitude && item.longitude) ? `${item.latitude},${item.longitude}` : item.endereco;
+            });
+
+            const origem = enderecos[0];
+            const destinoFinal = enderecos[enderecos.length - 1];
+            const paradasIntermediarias = enderecos.slice(1, -1);
+
+            let url = `https://www.google.com/maps/dir/?api=1&travelmode=walking`
+                + `&origin=${encodeURIComponent(origem)}`
+                + `&destination=${encodeURIComponent(destinoFinal)}`;
+
+            if (paradasIntermediarias.length > 0) {
+                url += `&waypoints=${encodeURIComponent(paradasIntermediarias.join('|'))}`;
+            }
+
+            window.open(url, '_blank');
+        }
+
+        function alternarModoOrdenacao() {
+            modoOrdenacao = (modoOrdenacao === 'rua_numero') ? 'planilha' : 'rua_numero';
+            atualizarEstiloToggle('ordenacao', modoOrdenacao === 'rua_numero');
+            renderizarListaCards();
+        }
+
+
+
+        function calcularAgrupamentos() {
+            agrupamentoEnderecosGlobais = {};
+            agrupamentoRuasGlobais = {};
+            
+            bancoDadosRotas.forEach(item => {
+                const base = getEnderecoBase(item.endereco);
+                if (!agrupamentoEnderecosGlobais[base]) {
+                    agrupamentoEnderecosGlobais[base] = { total: 0, comHd: 0, semHd: 0 };
+                }
+                agrupamentoEnderecosGlobais[base].total++;
+                
+                const semHidrometro = !item.hidrometro || item.hidrometro.toString().trim() === '-' || item.hidrometro.toString().trim() === '';
+                if (semHidrometro) {
+                    agrupamentoEnderecosGlobais[base].semHd++;
+                } else {
+                    agrupamentoEnderecosGlobais[base].comHd++;
+                }
+
+                const rua = getNomeRua(item.endereco);
+                if (!agrupamentoRuasGlobais[rua]) {
+                    agrupamentoRuasGlobais[rua] = { total: 0 };
+                }
+                agrupamentoRuasGlobais[rua].total++;
+            });
+            
+            preencherDropdownEnderecos();
+        }
+
+        function preencherDropdownEnderecos() {
+            const select = document.getElementById('select-endereco');
+            if(!select) return;
+            
+            select.innerHTML = '<option value="">🛣️ Mostrar Todo o Roteiro (Todas as Ruas)</option>';
+            const ruasOrdenadas = Object.keys(agrupamentoRuasGlobais).sort();
+            
+            ruasOrdenadas.forEach(rua => {
+                const totalDaRua = agrupamentoRuasGlobais[rua].total;
+                const opt = document.createElement('option');
+                opt.value = rua;
+                opt.text = `${rua} (Total: ${totalDaRua})`;
+                select.appendChild(opt);
+            });
+            
+            if (ruasOrdenadas.length > 0) {
+                document.getElementById('area-agrupamento').classList.remove('hidden');
+            }
+        }
+
+        function atualizarEstiloToggle(idAtributo, checado) {
+            const bg = document.getElementById(`toggle-bg-${idAtributo}`);
+            const dot = document.getElementById(`toggle-dot-${idAtributo}`);
+            const txt = document.getElementById(`texto-filtro-${idAtributo}`);
+            
+            if(!bg || !dot || !txt) return;
+
+            if(checado) {
+                bg.classList.replace('bg-slate-700', 'bg-[#0056b3]');
+                dot.classList.add('translate-x-4');
+                txt.classList.replace('text-gray-300', 'text-[#0056b3]');
+            } else {
+                bg.classList.replace('bg-[#0056b3]', 'bg-slate-700');
+                dot.classList.remove('translate-x-4');
+                txt.classList.replace('text-[#0056b3]', 'text-gray-300');
+            }
+        }
+
+        function filtrarLista() {
+            const checkPendentes = document.getElementById('check-pendentes').checked;
+            const checkHidrometro = document.getElementById('check-hidrometro').checked;
+            
+            atualizarEstiloToggle('pendentes', checkPendentes);
+            atualizarEstiloToggle('hidrometro', checkHidrometro);
+            
+            renderizarListaCards();
+        }
+
+       function renderizarListaCards() {
+            const container = document.getElementById('lista-fornecimentos');
+            container.innerHTML = '';
+            
+            const painelProgresso = document.getElementById('painel-progresso');
+            const areaPesquisa = document.getElementById('area-pesquisa');
+            
+            const limparTexto = (texto) => {
+                if (!texto) return '';
+                return texto.toString().toLowerCase()
+                    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
+                    .replace(/[,\.-]/g, ' ') 
+                    .replace(/\s+/g, ' ') 
+                    .trim();
+            };
+
+            const termoDigitado = document.getElementById('input-pesquisa') ? document.getElementById('input-pesquisa').value : '';
+            const termosBusca = limparTexto(termoDigitado).split(' ').filter(t => t !== '');
+
+            const ruaSelecionada = document.getElementById('select-endereco') ? document.getElementById('select-endereco').value : '';
+            const mostrarApenasPendentes = document.getElementById('check-pendentes') ? document.getElementById('check-pendentes').checked : false;
+            const mostrarApenasComHidrometro = document.getElementById('check-hidrometro') ? document.getElementById('check-hidrometro').checked : false;
+
+            if (bancoDadosRotas.length === 0) {
+                container.innerHTML = '<p class="text-center text-sm text-gray-500 italic mt-10">Aguardando importação...</p>';
+                painelProgresso.classList.add('hidden');
+                if (areaPesquisa) areaPesquisa.classList.add('hidden');
+                return;
+            }
+
+            painelProgresso.classList.remove('hidden');
+            if (areaPesquisa) areaPesquisa.classList.remove('hidden');
+            
+            let vistoriasConcluidasCount = 0;
+            let semGpsCount = 0;
+
+            // Conta o total geral primeiro (independe de filtro/ordem)
+            bancoDadosRotas.forEach((item) => {
+                if (item.status === 'concluido') {
+                    vistoriasConcluidasCount++;
+                    if (item.latitude === null || item.latitude === undefined || item.longitude === null || item.longitude === undefined) {
+                        semGpsCount++;
+                    }
+                }
+            });
+
+            // Lista de índices exibidos após filtros, na ordem escolhida (rua+número ou planilha)
+            // guardada globalmente para o botão "Ver Rota no Maps" usar os mesmos pontos visíveis
+            ultimaListaFiltradaIndices = [];
+
+            obterIndicesOrdenados().forEach((index) => {
+                const item = bancoDadosRotas[index];
+
+                if (ruaSelecionada !== '' && getNomeRua(item.endereco) !== ruaSelecionada) return;
+                if (mostrarApenasPendentes && item.status === 'concluido') return; 
+
+                const semHidrometro = !item.hidrometro || item.hidrometro.toString().trim() === '-' || item.hidrometro.toString().trim() === '';
+                if (mostrarApenasComHidrometro && semHidrometro) return;
+
+                const strCodigo = limparTexto(item.codigo);
+                const strEndereco = limparTexto(item.endereco);
+                const strHidrometro = limparTexto(item.hidrometro);
+
+                if (termosBusca.length > 0) {
+                    const atendePesquisa = termosBusca.every(termo => 
+                        strEndereco.includes(termo) || 
+                        strCodigo.includes(termo) || 
+                        strHidrometro.includes(termo)
+                    );
+                    if (!atendePesquisa) return; 
+                }
+
+                ultimaListaFiltradaIndices.push(index);
+
+                const baseEndereco = getEnderecoBase(item.endereco);
+                const estatisticasRua = agrupamentoEnderecosGlobais[baseEndereco];
+                
+                let tagAgrupamento = '';
+                if (estatisticasRua && estatisticasRua.total > 1) {
+                    tagAgrupamento = `
+                    <div class="mb-3">
+                        <span class="inline-block text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-1 rounded shadow-sm font-semibold">
+                            🏢 ${estatisticasRua.total} neste endereço (${estatisticasRua.comHd} com HIDRO / ${estatisticasRua.semHd} sem HIDRO)
+                        </span>
+                    </div>`;
+                }
+
+                const card = document.createElement('div');
+                const corBorda = item.status === 'concluido' ? 'border-emerald-500' : 'border-[#0056b3]';
+                
+                card.className = `bg-slate-800 p-6 rounded-2xl shadow-lg border-l-8 ${corBorda} mb-4 cursor-pointer transition-transform active:scale-[0.98]`;
+                card.onclick = () => abrirFormularioLeitura(index);
+
+                const iconeNuvem = item.idSupabase ? (item.syncPendente === true ? '<i class="fa-solid fa-cloud-arrow-up text-amber-500"></i>' : '<i class="fa-solid fa-cloud text-emerald-500"></i>') : '';
+
+                const semLocalizacao = item.status === 'concluido' && (item.latitude === null || item.latitude === undefined || item.longitude === null || item.longitude === undefined);
+                const tagSemLocalizacao = semLocalizacao ? '<span class="text-[10px] bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-1 rounded-full font-bold ml-1"><i class="fa-solid fa-location-crosshairs mr-1"></i>SEM GPS</span>' : '';
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-3">
+                        <span class="text-xs font-bold uppercase tracking-widest text-blue-400">Fornecimento: ${item.codigo} ${iconeNuvem}</span>
+                        <div class="flex items-center gap-1">
+                            ${item.status === 'concluido' ? '<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-full font-bold">FEITO</span>' : ''}
+                            ${tagSemLocalizacao}
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-between items-start gap-2 mb-2">
+                        <h3 class="text-xl font-extrabold text-white leading-tight">${item.endereco}</h3>
+                        <button onclick="event.stopPropagation(); abrirEnderecoNoMaps(${index})" class="shrink-0 w-9 h-9 rounded-lg bg-slate-700 hover:bg-[#0056b3] text-white flex items-center justify-center transition-all" title="Abrir no Google Maps">
+                            <i class="fa-solid fa-location-dot"></i>
+                        </button>
+                    </div>
+                    ${tagAgrupamento}
+                    
+                    <div class="grid grid-cols-2 gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+                        <div>
+                            <p class="text-[10px] text-gray-400 uppercase">Hidrômetro</p>
+                            <p class="text-sm font-mono font-bold text-white">${item.hidrometro}</p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-gray-400 uppercase">Leitura Ant.</p>
+                            <p class="text-sm font-mono font-bold text-white">${item.leituraAnterior}</p>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            document.getElementById('qtd-concluidos').innerText = vistoriasConcluidasCount;
+            document.getElementById('qtd-total').innerText = bancoDadosRotas.length;
+
+            const avisoSemGps = document.getElementById('aviso-sem-gps');
+            if (avisoSemGps) {
+                document.getElementById('qtd-sem-gps').innerText = semGpsCount;
+                avisoSemGps.classList.toggle('hidden', semGpsCount === 0);
+            }
+        }
+
+        // MOTOR DE CÂMERA E COMPRESSÃO
+        function processarCapturaFoto(num) {
+            const arquivo = document.getElementById(`input-foto-${num}`).files[0];
+            if (!arquivo) return;
+
+            const txtStatus = document.getElementById('status-compressao');
+            txtStatus.innerText = "⚡ Otimizando imagem, aguarde...";
+            txtStatus.className = "text-[10px] text-amber-400 mt-2 text-center animate-pulse";
+
+            const leitor = new FileReader();
+            leitor.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let largura = img.width;
+                    let altura = img.height;
+                    
+                    const LIMITE_MAXIMO = 1280;
+                    if (largura > altura) {
+                        if (largura > LIMITE_MAXIMO) {
+                            altura *= LIMITE_MAXIMO / largura;
+                            largura = LIMITE_MAXIMO;
+                        }
+                    } else {
+                        if (altura > LIMITE_MAXIMO) {
+                            largura *= LIMITE_MAXIMO / altura;
+                            altura = LIMITE_MAXIMO;
+                        }
+                    }
+
+                    canvas.width = largura;
+                    canvas.height = altura;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, largura, altura);
+                    
+                    const imagemComprimidaBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                    cacheFotosTemporarias[`foto${num}`] = imagemComprimidaBase64;
+                    
+                    const btn = document.getElementById(`btn-foto-${num}`);
+                    btn.innerHTML = `✅ Foto ${num} Pronta`;
+                    btn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-500');
+                    
+                    txtStatus.innerText = "Foto processada com sucesso.";
+                    txtStatus.className = "text-[10px] text-emerald-400 mt-2 text-center";
+                };
+                img.src = e.target.result;
+            };
+            leitor.readAsDataURL(arquivo);
+        }
+
+        // CONTROLE DO MODAL
+        function abrirFormularioLeitura(index) {
+            indiceSelecionado = index;
+            const registro = bancoDadosRotas[index];
+
+            document.getElementById('info-codigo').innerText = registro.codigo;
+            document.getElementById('info-endereco').innerText = registro.endereco;
+            document.getElementById('info-hidrometro').innerText = registro.hidrometro;
+            document.getElementById('info-anterior').innerText = registro.leituraAnterior;
+            
+            document.getElementById('input-leitura').value = registro.leituraAtual;
+            document.getElementById('input-observacao').value = registro.observacao || '';
+            
+            document.getElementById('input-foto-1').value = '';
+            document.getElementById('input-foto-2').value = '';
+            cacheFotosTemporarias.foto1 = registro.foto1;
+            cacheFotosTemporarias.foto2 = registro.foto2;
+
+            configurarBotaoVisual(1, registro.foto1);
+            configurarBotaoVisual(2, registro.foto2);
+
+            document.getElementById('tela-principal').classList.add('hidden');
+            document.getElementById('modal-leitura').classList.remove('hidden');
+            window.scrollTo(0,0);
+        }
+
+        function configurarBotaoVisual(num, existeFoto) {
+            const btn = document.getElementById(`btn-foto-${num}`);
+            if (existeFoto) {
+                btn.innerHTML = `✅ Foto ${num} Salva`;
+                btn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-500');
+            } else {
+                btn.innerHTML = `📸 Foto ${num}`;
+                btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-500');
+            }
+        }
+
+        function fecharModal() {
+            document.getElementById('tela-principal').classList.remove('hidden');
+            document.getElementById('modal-leitura').classList.add('hidden');
+            indiceSelecionado = null;
+        }
+
+        // SALVAMENTO HÍBRIDO SEGURO COM TRAVA DE GPS (3 SEGUNDOS)
+       // SALVAMENTO INSTANTÂNEO COM ENVIO EM SEGUNDO PLANO (BACKGROUND)
+        function salvarDadosEmCampo() {
+            const leituraDigitada = document.getElementById('input-leitura').value;
+            const obsDigitada = document.getElementById('input-observacao').value;
+
+            if (!leituraDigitada && (!obsDigitada || obsDigitada.trim() === '')) {
+                alert("Por favor, informe a leitura atual ou preencha uma observação.");
+                return;
+            }
+
+            const btnSalvar = document.getElementById('btn-salvar-modal');
+            const textoOriginalBtn = btnSalvar.innerHTML;
+            btnSalvar.innerHTML = "📍 Localizando...";
+            btnSalvar.disabled = true;
+
+            // Função que faz o salvamento
+            async function executarGravacaoNoBancoLocal(lat, lng) {
+                const registroAlvo = bancoDadosRotas[indiceSelecionado];
+                const indexSalvo = indiceSelecionado; // Guarda qual card foi editado
+                
+                registroAlvo.leituraAtual = leituraDigitada ? parseFloat(leituraDigitada).toFixed(1) : '';
+                registroAlvo.observacao = obsDigitada.trim();
+                registroAlvo.foto1 = cacheFotosTemporarias.foto1;
+                registroAlvo.foto2 = cacheFotosTemporarias.foto2;
+                registroAlvo.latitude = lat;
+                registroAlvo.longitude = lng;
+                registroAlvo.status = 'concluido';
+                registroAlvo.syncPendente = true; // Por padrão, dizemos que falta enviar pra nuvem
+
+                if (!registroAlvo.idSupabase) {
+                     registroAlvo.syncPendente = false; // Se for excel, tira pendencia
+                }
+
+                // 1º PASSO: GRAVA NO CELULAR NA MESMA HORA
+                const transacao = db.transaction(["roteiro"], "readwrite");
+                const loja = transacao.objectStore("roteiro");
+                loja.put({ id: indexSalvo, ...registroAlvo });
+
+                // 1.5º PASSO: conta pra backup automático em ZIP (rede de segurança extra)
+                registrarLeituraParaBackupAutomatico();
+
+                // 2º PASSO: LIBERA O LEITURISTA! (Fecha a tela e destrava o botão sem esperar a internet)
+                btnSalvar.innerHTML = textoOriginalBtn;
+                btnSalvar.disabled = false;
+                renderizarListaCards();
+                fecharModal();
+
+                if (lat === null || lng === null) {
+                    mostrarAvisoSemLocalizacao();
+                }
+
+                // 3º PASSO: ENVIA PRA NUVEM DE MODO INVISÍVEL
+                if (registroAlvo.idSupabase) {
+                    // Verifica rapidamente se o navegador acha que tem internet
+                    if (!navigator.onLine) {
+                        mostrarAvisoOffline();
+                        return; // Se não tem rede, para a tentativa por aqui
+                    }
+
+                    try {
+                        const pacoteDados = {
+                            leitura_atual: registroAlvo.leituraAtual ? parseFloat(registroAlvo.leituraAtual) : null,
+                            observacao: registroAlvo.observacao,
+                            status: 'concluido',
+                            latitude: registroAlvo.latitude,
+                            longitude: registroAlvo.longitude,
+                            foto1: registroAlvo.foto1, 
+                            foto2: registroAlvo.foto2, 
+                            atualizado_em: new Date().toISOString()
+                        };
+
+                        const respUpdate = await fetch(`${SUPABASE_URL}/rest/v1/leituras_2?id=eq.${registroAlvo.idSupabase}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'apikey': SUPABASE_KEY,
+                                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'return=minimal'
+                            },
+                            body: JSON.stringify(pacoteDados)
+                        });
+                        const erroSupabase = respUpdate.ok ? null : new Error('Falha ao atualizar leitura');
+
+                        if (!erroSupabase) {
+                            // Deu certo! Atualiza o banco do celular tirando a pendência (Nuvem Verde)
+                            registroAlvo.syncPendente = false; 
+                            const t2 = db.transaction(["roteiro"], "readwrite");
+                            t2.objectStore("roteiro").put({ id: indexSalvo, ...registroAlvo });
+                            renderizarListaCards(); 
+                        } else {
+                            throw erroSupabase;
+                        }
+                    } catch(e) {
+                        console.error("Falha no background:", e);
+                        mostrarAvisoOffline();
+                    }
+                }
+            }
+
+            function mostrarAvisoOffline() {
+                const aviso = document.createElement('div');
+                aviso.className = 'fixed bottom-4 left-4 right-4 bg-amber-500 text-white p-3 rounded-lg text-center shadow-lg text-sm font-bold z-50 transition-opacity duration-500';
+                aviso.innerHTML = '🚫 Sem internet! Salvo localmente para sincronizar depois.';
+                document.body.appendChild(aviso);
+                setTimeout(() => {
+                    aviso.style.opacity = '0';
+                    setTimeout(() => aviso.remove(), 500);
+                }, 3000);
+            }
+
+            function mostrarAvisoSemLocalizacao() {
+                const aviso = document.createElement('div');
+                aviso.className = 'fixed bottom-4 left-4 right-4 bg-red-600 text-white p-3 rounded-lg text-center shadow-lg text-sm font-bold z-50 transition-opacity duration-500';
+                aviso.innerHTML = '📍❌ Leitura salva SEM localização (GPS não respondeu). Se possível, abra a leitura de novo em local aberto para tentar capturar.';
+                document.body.appendChild(aviso);
+                setTimeout(() => {
+                    aviso.style.opacity = '0';
+                    setTimeout(() => aviso.remove(), 500);
+                }, 4500);
+            }
+
+            // Pede o GPS. Tenta com alta precisão; se falhar/travar, faz uma 2ª tentativa
+            // mais tolerante antes de desistir (reduz leituras salvas "sem localização").
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => executarGravacaoNoBancoLocal(position.coords.latitude, position.coords.longitude),
+                    (erroPrimeiraTentativa) => {
+                        btnSalvar.innerHTML = "📍 Tentando novamente...";
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => executarGravacaoNoBancoLocal(position.coords.latitude, position.coords.longitude),
+                            (erroSegundaTentativa) => executarGravacaoNoBancoLocal(null, null),
+                            { enableHighAccuracy: false, timeout: 8000, maximumAge: 30000 }
+                        );
+                    },
+                    { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+                );
+            } else {
+                executarGravacaoNoBancoLocal(null, null);
+            }
+        }
+        // COMPILAÇÃO ZIP COMPLETA
+        // automatico=true: roda em segundo plano (backup periódico), sem travar botão nem mostrar alertas de erro
+        function exportarRoteiroCompletoZIP(automatico = false) {
+            let conteudoTXT = "";
+            let vistoriasConcluidas = 0;
+            
+            const zip = new JSZip();
+            const pastaFotos = zip.folder("Fotos");
+
+            bancoDadosRotas.forEach(item => {
+                if (item.status === 'concluido') {
+                    const obsLimpa = item.observacao ? item.observacao.replace(/(\r\n|\n|\r|;)/gm, " ") : "";
+                    const lat = item.latitude || "SemGPS";
+                    const lng = item.longitude || "SemGPS";
+                    conteudoTXT += `${item.codigo};${item.leituraAtual};${lat};${lng};${obsLimpa}\n`;
+                    vistoriasConcluidas++;
+
+                    if (item.foto1) {
+                        const base64Pura = item.foto1.split(',')[1];
+                        pastaFotos.file(`${item.codigo}_${item.hidrometro}_1.jpg`, base64Pura, {base64: true});
+                    }
+                    if (item.foto2) {
+                        const base64Pura = item.foto2.split(',')[1];
+                        pastaFotos.file(`${item.codigo}_${item.hidrometro}_2.jpg`, base64Pura, {base64: true});
+                    }
+                }
+            });
+
+            if (vistoriasConcluidas === 0) {
+                if (!automatico) alert("Nenhuma leitura registrada para exportação.");
+                return;
+            }
+
+            const btnExportar = document.getElementById('btn-exportar-zip');
+            if (!automatico) {
+                btnExportar.innerText = "⏳ GERANDO ARQUIVO ZIP...";
+                btnExportar.disabled = true;
+            }
+
+            zip.file("Leituras_Consolidadas.txt", conteudoTXT);
+
+            zip.generateAsync({type: "blob"}).then(function(conteudoBlob) {
+                const linkDownload = document.createElement('a');
+                linkDownload.href = URL.createObjectURL(conteudoBlob);
+
+                const agora = new Date();
+                const dataHoje = agora.toISOString().split('T')[0];
+
+                if (automatico) {
+                    const horaMin = agora.toTimeString().slice(0,5).replace(':', 'h');
+                    linkDownload.download = `Backup_Auto_${dataHoje}_${horaMin}.zip`;
+                    linkDownload.click();
+                    mostrarAvisoBackupAutomatico(vistoriasConcluidas);
+                } else {
+                    linkDownload.download = `Roteiro_Auditoria_${dataHoje}.zip`;
+                    linkDownload.click();
+                    btnExportar.innerText = "📦 EXPORTAR TAREFA COMPLETA (ZIP)";
+                    btnExportar.disabled = false;
+                }
+            });
+        }
+
+        // Toast discreto pra avisar que o backup automático foi salvo, sem travar a tela com alert()
+        function mostrarAvisoBackupAutomatico(qtd) {
+            const aviso = document.createElement('div');
+            aviso.className = 'fixed bottom-4 left-4 right-4 bg-emerald-600 text-white p-3 rounded-lg text-center shadow-lg text-sm font-bold z-50 transition-opacity duration-500';
+            aviso.innerHTML = `💾 Backup automático salvo (${qtd} leituras) na pasta Downloads.`;
+            document.body.appendChild(aviso);
+            setTimeout(() => {
+                aviso.style.opacity = '0';
+                setTimeout(() => aviso.remove(), 500);
+            }, 3500);
+        }
+
+        // --- BACKUP PERIÓDICO AUTOMÁTICO ---
+        // A cada N leituras salvas, gera um ZIP sozinho como rede de segurança extra,
+        // além do IndexedDB. Não substitui a exportação manual no fim da rota.
+        let leiturasDesdeUltimoBackup = 0;
+        const LEITURAS_ENTRE_BACKUPS = 15;
+
+        function registrarLeituraParaBackupAutomatico() {
+            leiturasDesdeUltimoBackup++;
+            if (leiturasDesdeUltimoBackup >= LEITURAS_ENTRE_BACKUPS) {
+                leiturasDesdeUltimoBackup = 0;
+                exportarRoteiroCompletoZIP(true);
+            }
+        }
+
+
+        // AGENTE DE COMPARTILHAMENTO WHATSAPP
+        async function compartilharNoWhatsApp(index) {
+            const item = bancoDadosRotas[index];
+            const texto = `*Visita de Campo*\n\n` +
+                          `*Fornecimento:* ${item.codigo}\n` +
+                          `*Endereço:* ${item.endereco}\n` +
+                          `*Hidrômetro:* ${item.hidrometro}\n` +
+                          `*Leitura Atual:* ${item.leituraAtual || 'N/A'}\n` +
+                          `*Observação:* ${item.observacao || 'Nenhuma'}`;
+
+            try {
+                let arquivosParaEnviar = [];
+                if (item.foto1) {
+                    const resposta = await fetch(item.foto1);
+                    const blob = await resposta.blob();
+                    arquivosParaEnviar.push(new File([blob], `${item.codigo}_1.jpg`, { type: 'image/jpeg' }));
+                }
+
+                if (navigator.canShare && navigator.canShare({ files: arquivosParaEnviar })) {
+                    await navigator.share({ title: 'Relatório', text: texto, files: arquivosParaEnviar });
+                } else {
+                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
+                }
+            } catch (erro) {
+                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
+            }
+        }
+
+        // --- LIMPEZA DE ESPAÇO: remove fotos do IndexedDB apenas de leituras
+        // já confirmadas na nuvem (Supabase). A leitura, código, endereço e
+        // demais dados continuam salvos — só a foto pesada é removida do celular,
+        // já que ela existe com segurança no servidor.
+        async function limparFotosSincronizadas() {
+            const elegiveis = bancoDadosRotas.filter(r =>
+                r.status === 'concluido' &&
+                r.idSupabase &&
+                r.syncPendente === false &&
+                (r.foto1 || r.foto2)
+            );
+
+            if (elegiveis.length === 0) {
+                alert("✅ Nada para liberar.\n\nSó libero fotos de leituras que já foram confirmadas na nuvem. Sincronize primeiro (botão 'Sicro.') se houver pendências.");
+                return;
+            }
+
+            const confirmar = confirm(
+                `🧹 Liberar espaço\n\n${elegiveis.length} leitura(s) já têm fotos salvas com segurança na nuvem.\n\n` +
+                `As fotos serão apagadas SOMENTE deste aparelho (o registro, leitura e localização continuam salvos).\n\n` +
+                `⚠️ Se ainda for exportar o ZIP com fotos, faça isso ANTES de continuar.\n\nDeseja liberar o espaço agora?`
+            );
+            if (!confirmar) return;
+
+            const btn = document.getElementById('btn-limpar-fotos');
+            const conteudoOriginal = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+
+            let liberados = 0;
+            for (let i = 0; i < bancoDadosRotas.length; i++) {
+                const registro = bancoDadosRotas[i];
+                if (registro.status === 'concluido' && registro.idSupabase && registro.syncPendente === false && (registro.foto1 || registro.foto2)) {
+                    registro.foto1 = null;
+                    registro.foto2 = null;
+                    registro.fotosLiberadasLocal = true;
+
+                    const transacao = db.transaction(["roteiro"], "readwrite");
+                    const loja = transacao.objectStore("roteiro");
+                    loja.put({ id: i, ...registro });
+                    liberados++;
+                }
+            }
+
+            btn.innerHTML = conteudoOriginal;
+            btn.disabled = false;
+            renderizarListaCards();
+
+            const espaco = await verificarEspacoArmazenamento();
+            const infoEspaco = espaco ? `\n\nUso atual do armazenamento: ${espaco.percentualUsado.toFixed(0)}%` : '';
+            alert(`🎉 Espaço liberado!\n\n${liberados} leitura(s) tiveram as fotos removidas do aparelho (já estão seguras na nuvem).${infoEspaco}`);
+        }
+
+        // --- MOTOR DE SINCRONIZAÇÃO OFFLINE -> NUVEM ---
+        async function sincronizarDadosOffline() {
+            const registrosPendentes = bancoDadosRotas.filter(r => r.status === 'concluido' && r.idSupabase && r.syncPendente === true);
+
+            if (registrosPendentes.length === 0) {
+                alert("✅ Tudo atualizado! Não há leituras offline aguardando envio.");
+                return;
+            }
+
+            const btnSync = document.getElementById('btn-sync-offline');
+            const conteudoOriginalBtn = btnSync.innerHTML;
+            btnSync.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btnSync.disabled = true;
+
+            let sucesso = 0;
+            let falha = 0;
+
+            for (let i = 0; i < bancoDadosRotas.length; i++) {
+                let registro = bancoDadosRotas[i];
+                
+                if (registro.status === 'concluido' && registro.idSupabase && registro.syncPendente === true) {
+                    try {
+                        const pacoteDados = {
+                            leitura_atual: registro.leituraAtual ? parseFloat(registro.leituraAtual) : null,
+                            observacao: registro.observacao,
+                            status: 'concluido',
+                            latitude: registro.latitude,
+                            longitude: registro.longitude,
+                            foto1: registro.foto1, 
+                            foto2: registro.foto2, 
+                            atualizado_em: new Date().toISOString()
+                        };
+
+                        const respUpdateLote = await fetch(`${SUPABASE_URL}/rest/v1/leituras_2?id=eq.${registro.idSupabase}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'apikey': SUPABASE_KEY,
+                                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'return=minimal'
+                            },
+                            body: JSON.stringify(pacoteDados)
+                        });
+                        if (!respUpdateLote.ok) throw new Error('Falha ao atualizar leitura');
+
+                        registro.syncPendente = false;
+                        
+                        const transacao = db.transaction(["roteiro"], "readwrite");
+                        const loja = transacao.objectStore("roteiro");
+                        loja.put({ id: i, ...registro });
+
+                        sucesso++;
+                    } catch (err) {
+                        falha++;
+                    }
+                }
+            }
+
+            btnSync.innerHTML = conteudoOriginalBtn;
+            btnSync.disabled = false;
+            renderizarListaCards();
+
+            if (falha > 0) {
+                alert(`⚠️ Sincronização Parcial!\n\n✅ ${sucesso} enviadas.\n❌ ${falha} falharam (Verifique a internet).`);
+            } else {
+                alert(`🎉 Sincronização Concluída!\n\nForam enviadas ${sucesso} leituras salvas no aparelho.`);
+            }
+        }
+    </script>
+
+    <script>
+        // Service Worker só funciona servido via http/https, nunca em file://
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Modo Offline ativado!', reg.scope))
+                    .catch(err => console.error('Erro ao ativar Modo Offline:', err));
+            });
+        } else if (location.protocol === 'file:') {
+            console.warn('Modo Offline (Service Worker) desativado: abra este arquivo por um servidor http/https, não direto do disco (file://).');
+        }
+    </script>
+</body>
+</html>
