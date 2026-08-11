@@ -1,0 +1,2517 @@
+<!DOCTYPE html>
+<html lang="pt-br"> 
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Painel Diário · Análise de Consumo e Ocorrências</title>
+   
+   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+   <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+   <style>
+       :root {
+           --bg:       #0d1117;
+           --surface:  #161b22;
+           --surface2: #1c2230;
+           --border:   #2a3142;
+           --border2:  #313d52;
+
+           --blue:    #4f9cf9;
+           --blue-dim:#1e3a5f;
+           --red:     #f97171;
+           --red-dim: #3d1e1e;
+           --amber:   #f9c74f;
+           --amber-dim:#3d3010;
+           --green:   #4ade80;
+           --green-dim:#0f3020;
+           --purple:  #c084fc;
+           --purple-dim:#2d1a45;
+           --cyan:    #22d3ee;
+           --cyan-dim:#0e3b46;
+
+           --text:    #e6edf3;
+           --muted:   #7d8fa8;
+           --faint:   #2f3b4e;
+
+           --radius: 12px;
+           --radius-sm: 8px;
+           --shadow: 0 4px 24px rgba(0,0,0,0.4);
+       }
+
+       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+       body {
+           font-family: 'DM Sans', sans-serif;
+           background: var(--bg);
+           color: var(--text);
+           padding: 24px 20px 60px;
+           min-height: 100vh;
+       }
+
+       body::before {
+           content: '';
+           position: fixed; inset: 0;
+           background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+           pointer-events: none; z-index: 0; opacity: 0.4;
+       }
+
+       .container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; }
+
+       /* ─── Navegação por Abas ─── */
+       .tabs-nav {
+           display: flex;
+           gap: 8px;
+           margin-bottom: 16px;
+           border-bottom: 1px solid var(--border);
+           padding-bottom: 8px;
+       }
+       .tab-btn {
+           background: transparent;
+           border: none;
+           color: var(--muted);
+           padding: 8px 16px;
+           font-size: 0.95rem;
+           font-weight: 600;
+           cursor: pointer;
+           border-radius: var(--radius-sm);
+           transition: all 0.2s;
+       }
+       .tab-btn:hover { color: var(--text); background: var(--surface); }
+       .tab-btn.active { color: var(--blue); background: var(--blue-dim); }
+
+       .tab-content { display: none; }
+       .tab-content.active { display: block; }
+
+       /* ─── Header / Upload ─── */
+       .header-panel {
+           background: var(--surface);
+           border: 1px solid var(--border);
+           border-radius: var(--radius);
+           padding: 36px 32px;
+           margin-bottom: 24px;
+           position: relative;
+           overflow: hidden;
+       }
+       .header-panel::before {
+           content: '';
+           position: absolute; top: 0; left: 0; right: 0; height: 3px;
+           background: linear-gradient(90deg, var(--blue), var(--cyan), var(--purple), var(--blue));
+           background-size: 200% 100%;
+           animation: shimmer 4s linear infinite;
+       }
+       @keyframes shimmer { 0%{background-position:0 0} 100%{background-position:200% 0} }
+
+       .header-content { display: flex; gap: 32px; align-items: center; flex-wrap: wrap; }
+       .header-text { flex: 1; min-width: 300px; }
+       
+       .header-title {
+           font-size: 1.85rem; font-weight: 800; letter-spacing: -0.5px;
+           background: linear-gradient(135deg, var(--blue), var(--cyan));
+           -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+           background-clip: text; margin-bottom: 4px;
+       }
+       .header-sub { color: var(--muted); font-size: 0.95rem; margin-bottom: 24px; }
+
+       .upload-zone {
+           border: 2px dashed var(--border2);
+           background: var(--bg);
+           padding: 24px;
+           border-radius: var(--radius);
+           cursor: pointer;
+           transition: all 0.25s ease;
+           text-align: center;
+       }
+       .upload-zone:hover, .upload-zone.dragover { border-color: var(--cyan); background: rgba(34, 211, 238, 0.05); transform: scale(1.01); }
+       .upload-icon {
+           width: 42px; height: 42px; margin: 0 auto 12px;
+           background: var(--blue-dim); border-radius: 50%;
+           display: flex; align-items: center; justify-content: center;
+       }
+       .upload-zone h3 { color: var(--text); font-size: 1rem; margin-bottom: 4px; }
+       .upload-zone p { color: var(--muted); font-size: 0.85rem; }
+       #fileInput { display: none; }
+
+       #status-msg { margin-top: 16px; font-weight: 600; font-size: 0.9rem; text-align: center; min-height: 24px; }
+
+       /* ─── Top Section (KPIs + Chart) ─── */
+       .dashboard-top {
+           display: grid;
+           grid-template-columns: 1.8fr 1.2fr;
+           gap: 20px;
+           margin-bottom: 20px;
+       }
+       @media(max-width: 1024px) { .dashboard-top { grid-template-columns: 1fr; } }
+
+       .main-grid {
+           display: grid;
+           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+           gap: 16px;
+       }
+       .card {
+           background: var(--surface); border: 1px solid var(--border);
+           border-radius: var(--radius); padding: 24px 20px;
+           position: relative; overflow: hidden;
+           transition: transform 0.2s, box-shadow 0.2s;
+       }
+       .card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+       .card::after { content: attr(data-icon); position: absolute; right: 16px; top: 16px; font-size: 2rem; opacity: 0.12; }
+       .card-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin-bottom: 8px; }
+       .card-value { font-family: 'Space Mono', monospace; font-size: 2.4rem; font-weight: 700; line-height: 1; letter-spacing: -2px; margin-bottom: 6px; }
+       .card-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+       .card-accent { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; }
+
+       .c-ativa .card-value     { color: var(--blue); } .c-ativa .card-accent    { background: var(--blue); }
+       .c-inativa .card-value   { color: var(--muted); } .c-inativa .card-accent  { background: var(--muted); }
+       .c-causa .card-value     { color: var(--purple); } .c-causa .card-accent    { background: var(--purple); } .c-causa .card-badge { background: var(--purple-dim); color: var(--purple); }
+       .c-risco .card-value     { color: var(--cyan); } .c-risco .card-accent    { background: var(--cyan); } .c-risco .card-badge { background: var(--cyan-dim); color: var(--cyan); }
+
+       /* Cards principais clicáveis (baixam planilha formatada) */
+       .card-clicavel { cursor: pointer; }
+       .card-download-hint {
+           display: block; font-size: 0.68rem; font-weight: 700; color: var(--muted);
+           opacity: 0; transition: opacity 0.2s; margin-top: 6px; letter-spacing: 0.3px;
+       }
+       .card-clicavel:hover .card-download-hint { opacity: 1; }
+       .card-clicavel:hover { border-color: var(--cyan); }
+
+       /* Gráficos */
+       .charts-box { display: grid; grid-template-columns: 1fr; gap: 16px; width: 100%; }
+       @media(min-width: 600px) { .charts-box { grid-template-columns: 1fr 1fr; } }
+       @media(max-width: 1024px) { .charts-box { grid-template-columns: 1fr 1fr; } }
+       @media(max-width: 600px) { .charts-box { grid-template-columns: 1fr; } }
+       
+       .chart-container {
+           background: var(--surface); border: 1px solid var(--border);
+           border-radius: var(--radius); padding: 16px;
+           display: flex; flex-direction: column; align-items: center; justify-content: center;
+           min-height: 240px; position: relative; width: 100%;
+       }
+       .chart-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); align-self: flex-start; margin-bottom: 10px; }
+       .chart-wrapper { width: 100%; height: 180px; position: relative; }
+
+       /* ─── Legend ─── */
+       .legend-bar {
+           background: var(--surface); border: 1px solid var(--border);
+           border-radius: var(--radius); padding: 12px 20px;
+           margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 16px;
+           align-items: center; justify-content: center;
+       }
+       .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 500; color: var(--muted); }
+       .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+       /* ─── Controls ─── */
+       .controls-container { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+       .filter-bar, .search-bar { background: var(--surface); border: 1px solid var(--border); padding: 14px 18px; border-radius: var(--radius); display: none; align-items: center; flex: 1; min-width: 300px; }
+       .filter-bar { flex-direction: column; align-items: stretch; gap: 14px; }
+       .search-wrap { position: relative; width: 100%; }
+       .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 0.9rem; }
+       .search-input { width: 100%; padding: 10px 16px 10px 38px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; color: var(--text); outline: none; transition: 0.2s; font-family: 'DM Sans', sans-serif; }
+       .search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(79,156,249,0.12); }
+       .btn-filter { background: var(--bg); border: 1px solid var(--border); padding: 7px 14px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; font-weight: 600; color: var(--muted); transition: 0.2s; font-family: 'DM Sans', sans-serif; }
+       .btn-filter:hover { border-color: var(--border2); color: var(--text); }
+       .btn-filter.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+       .toggle-container { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+       .toggle-container input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--blue); }
+       .toggle-label { font-size: 0.85rem; font-weight: 600; color: var(--text); cursor: pointer; }
+
+       /* ─── Technician Cards ─── */
+       .tecnicos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+       .tecnico-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; cursor: pointer; transition: all 0.2s ease; overflow: hidden; animation: cardIn 0.35s ease both; position: relative; }
+       @keyframes cardIn { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
+       .tecnico-card:hover { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), var(--shadow); transform: translateY(-3px); }
+
+       .tecnico-header { padding: 14px 16px; background: var(--surface2); border-bottom: 1px solid var(--border); font-weight: 700; font-size: 0.95rem; color: var(--text); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+       .tecnico-header-name { display: flex; align-items: center; gap: 10px; }
+       .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--blue-dim), var(--purple-dim)); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; color: var(--blue); flex-shrink: 0; font-family: 'Space Mono', monospace; }
+       
+       /* Medalhas Ranking */
+       .medal-icon { font-size: 1.4rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+
+       .tecnico-stats { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--border); }
+       .stat-box { padding: 10px 6px; text-align: center; border-right: 1px solid var(--border); transition: background 0.2s; }
+       .stat-box:last-child { border-right: none; }
+       .stat-box small { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 4px; }
+       .stat-box b { font-size: 1.15rem; font-family: 'Space Mono', monospace; }
+
+       .st-leituras { color: var(--blue); } .st-leituras small { color: var(--blue); opacity: 0.7; }
+       
+       .st-naoimp { color: var(--red); cursor: pointer; } .st-naoimp small { color: var(--red); opacity: 0.7; }
+       .st-naoimp:hover { background: rgba(249,113,113,0.06); }
+       
+       .st-foramedia { color: var(--amber); cursor: pointer; } .st-foramedia small { color: var(--amber); opacity: 0.7; }
+       .st-foramedia:hover { background: rgba(249,199,79,0.06); }
+       
+       .st-cods { color: var(--purple); } .st-cods small { color: var(--purple); opacity: 0.7; }
+
+       .tecnico-body { padding: 12px 14px; flex-grow: 1; font-size: 0.82rem; max-height: 180px; overflow-y: auto; }
+       .tecnico-body::-webkit-scrollbar { width: 4px; } .tecnico-body::-webkit-scrollbar-track { background: transparent; } .tecnico-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+       .ocorrencia-linha { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--faint); gap: 8px; }
+       .ocorrencia-linha:last-child { border-bottom: none; }
+       .ocorrencia-linha span:first-child { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+       .occ-count { font-weight: 700; color: var(--red); background: var(--red-dim); padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; flex-shrink: 0; font-family: 'Space Mono', monospace; }
+
+       .tecnico-footer { padding: 10px 14px; background: var(--surface2); border-top: 1px solid var(--border); }
+       .footer-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+       .footer-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+       .footer-value { font-size: 0.85rem; font-weight: 700; color: var(--green); font-family: 'Space Mono', monospace; }
+       .progress-track { width: 100%; height: 4px; background: var(--faint); border-radius: 2px; overflow: hidden; }
+       .progress-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--green), var(--cyan)); transition: width 0.6s ease; }
+
+       /* ─── Histórico UI ─── */
+       .history-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px; }
+       .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px dashed var(--border); padding-bottom: 12px; }
+       .delta-badge { font-size: 0.75rem; font-weight: bold; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-family: 'Space Mono', monospace; }
+       .delta-up { background: var(--green-dim); color: var(--green); }
+
+       /* ─── Badges ─── */
+       .badge { padding: 3px 9px; border-radius: 20px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+       .badge-danger  { background: var(--red-dim); color: var(--red); border: 1px solid rgba(249,113,113,0.3); }
+       .badge-success { background: var(--green-dim); color: var(--green); border: 1px solid rgba(74,222,128,0.3); }
+       .badge-warning { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(249,199,79,0.3); }
+       .badge-info    { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(34,211,238,0.3); }
+       .badge-neutral { background: var(--faint); color: var(--muted); border: 1px solid rgba(125,143,168,0.3); }
+
+       /* ─── Modal ─── */
+       .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(6px); }
+       .modal-content { background: var(--surface); border: 1px solid var(--border); width: 96%; max-width: 1400px; max-height: 90vh; border-radius: var(--radius); box-shadow: 0 32px 64px rgba(0,0,0,0.5); display: flex; flex-direction: column; overflow: hidden; animation: modalIn 0.28s ease-out; }
+       @keyframes modalIn { from { transform: scale(0.96) translateY(16px); opacity:0; } to { transform: scale(1) translateY(0); opacity:1; } }
+
+       .modal-header { padding: 18px 24px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+       .modal-header h3 { margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 10px; }
+       .modal-badge-count { background: var(--blue-dim); color: var(--blue); padding: 3px 10px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; font-family: 'Space Mono', monospace; }
+       .modal-actions { display: flex; align-items: center; gap: 10px; }
+
+       .close-btn { background: var(--bg); border: 1px solid var(--border); color: var(--muted); width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; cursor: pointer; transition: 0.2s; }
+       .close-btn:hover { background: var(--red-dim); border-color: var(--red); color: var(--red); transform: rotate(90deg); }
+
+       .modal-body { overflow-y: auto; flex-grow: 1; }
+       .modal-body::-webkit-scrollbar { width: 6px; } .modal-body::-webkit-scrollbar-track { background: var(--bg); } .modal-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+       table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+       th { background: var(--surface2); position: sticky; top: 0; padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 700; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; z-index: 2; transition: color 0.15s; }
+       th:hover { color: var(--cyan); }
+       td { padding: 10px 14px; border-bottom: 1px solid var(--faint); color: var(--text); white-space: nowrap; }
+       tr:hover td { background: rgba(255,255,255,0.03); }
+       tr.linha-selecionada td { background: rgba(34, 211, 238, 0.08) !important; }
+       .td-center { text-align: center; }
+       .empty-message { padding: 48px; text-align: center; color: var(--muted); font-size: 1rem; }
+
+       /* ─── Export/Control Buttons ─── */
+       .btn-export, .btn-export-pdf, .btn-clear { border: 1px solid; padding: 7px 14px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem; font-weight: 700; transition: 0.2s; font-family: 'DM Sans', sans-serif; }
+       .btn-export { background: var(--green-dim); color: var(--green); border-color: rgba(74,222,128,0.2); }
+       .btn-export:hover { background: rgba(74,222,128,0.15); }
+       .btn-export-pdf { background: var(--red-dim); color: var(--red); border-color: rgba(249,113,113,0.2); }
+       .btn-export-pdf:hover { background: rgba(249,113,113,0.15); }
+       .btn-clear { background: var(--bg); color: var(--red); border-color: var(--border); }
+       .btn-clear:hover { background: var(--red-dim); border-color: var(--red); }
+
+       .loader { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--faint); border-top-color: var(--cyan); border-radius: 50%; vertical-align: middle; margin-right: 8px; animation: spin 0.8s linear infinite; }
+       @keyframes spin { to { transform: rotate(360deg); } }
+
+       #atcContainer { display: none; flex-wrap: wrap; gap: 8px; padding-top: 14px; border-top: 1px dashed var(--border); }
+       #atcContainer label { background: var(--bg); border: 1px solid var(--border); padding: 5px 12px; border-radius: 14px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+       #atcContainer label:hover { border-color: var(--cyan); color: var(--cyan); }
+
+       #uniOrgContainer, #grupoMercadoContainer { display: none; flex-wrap: wrap; gap: 8px; padding-top: 14px; border-top: 1px dashed var(--border); }
+       #uniOrgContainer label, #grupoMercadoContainer label { background: var(--bg); border: 1px solid var(--border); padding: 5px 12px; border-radius: 14px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+       #uniOrgContainer label:hover, #grupoMercadoContainer label:hover { border-color: var(--cyan); color: var(--cyan); }
+
+       .no-data-state { grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--muted); }
+       .no-data-state svg { opacity: 0.2; margin-bottom: 16px; }
+       
+       /* ─── Botão de Sincronização Servidor ─── */
+       .btn-sync {
+           background: linear-gradient(135deg, var(--blue), var(--purple));
+           color: #fff;
+           border: none;
+           padding: 10px 20px;
+           border-radius: var(--radius-sm);
+           font-weight: 700;
+           font-size: 0.9rem;
+           cursor: pointer;
+           transition: transform 0.2s, box-shadow 0.2s;
+           display: inline-flex;
+           align-items: center;
+           gap: 8px;
+           font-family: 'DM Sans', sans-serif;
+           margin-top: 12px;
+       }
+       .btn-sync:hover {
+           transform: translateY(-2px);
+           box-shadow: 0 4px 12px rgba(192, 132, 252, 0.4);
+       }
+       
+   </style>
+</head>
+<body>
+
+<div class="container">
+
+   <div class="header-panel">
+       <div class="header-content">
+           <div class="header-text">
+               <h1 class="header-title">Auditoria Diária de Faturamento</h1>
+               <p class="header-sub">Identifique desvios de consumo, quedas suspeitas e acompanhe a evolução operacional.</p>
+               <button id="btnSync" class="btn-sync" onclick="enviarParaServidor()" style="display: none;">
+                   <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                   Salvar Resumo no Servidor
+               </button>
+           </div>
+           
+           <div id="dropZone" class="upload-zone" onclick="document.getElementById('fileInput').click()">
+               <div class="upload-icon">
+                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+               </div>
+               <h3>Clique ou arraste a planilha aqui</h3>
+               <p>Excel gerado pelo sistema no Analise de Consumo</p>
+               <input type="file" id="fileInput" accept=".xlsx, .xls, .csv">
+           </div>
+       </div>
+       <div id="status-msg" style="color: var(--muted);">Aguardando arquivo…</div>
+   </div>
+
+   <div class="tabs-nav">
+       <button id="btn-tab-dashboard" class="tab-btn active" onclick="mudarAba('dashboard')">Painel Operacional</button>
+       <button id="btn-tab-historico" class="tab-btn" onclick="mudarAba('historico')">Histórico de Evolução (Hoje)</button>
+       <button id="btn-tab-ocorrencias" class="tab-btn" onclick="mudarAba('ocorrencias')">📋 Ocorrências</button>
+       <button id="btn-tab-consulta" class="tab-btn" onclick="mudarAba('consulta')">☁️ Consulta Servidor</button>
+   </div>
+
+   <div id="tab-dashboard" class="tab-content active">
+       <div class="dashboard-top">
+           <div class="main-grid">
+               <div class="card c-ativa card-clicavel" data-icon="💧" onclick="exportarCardAtivos()" title="Clique para baixar a planilha detalhada">
+                   <div class="card-label">Fornecimentos Lidos</div>
+                   <div id="countAtivo" class="card-value">—</div>
+                   <span class="card-download-hint">📥 baixar planilha</span>
+                   <div class="card-accent"></div>
+               </div>
+               <div class="card c-causa card-clicavel" data-icon="⚠" onclick="exportarCardOcorrencias()" title="Clique para baixar a planilha detalhada">
+                   <div class="card-label">Total de Ocorrências</div>
+                   <div id="countOcorrencia" class="card-value">—</div>
+                   <span id="percentOcorrencia" class="card-badge">0% das Leituras</span>
+                   <span class="card-download-hint">📥 baixar planilha</span>
+                   <div class="card-accent"></div>
+               </div>
+               <div class="card c-risco card-clicavel" data-icon="📉" onclick="exportarCardRiscos()" title="Clique para baixar a planilha detalhada">
+                   <div class="card-label">Quedas Suspeitas (Risco)</div>
+                   <div id="countRisco" class="card-value">—</div>
+                   <span class="card-badge">Subfaturamento</span>
+                   <span class="card-download-hint">📥 baixar planilha</span>
+                   <div class="card-accent"></div>
+               </div>
+               <div class="card c-inativa card-clicavel" data-icon="📈" onclick="exportarCardEstouros()" title="Clique para baixar a planilha detalhada">
+                   <div class="card-label">Estouros de Consumo</div>
+                   <div id="countEstouro" class="card-value">—</div>
+                   <span class="card-download-hint">📥 baixar planilha</span>
+                   <div class="card-accent"></div>
+               </div>
+                <div class="card" data-icon="📄">
+                    <div class="card-label">Comunicados Impressos</div>
+                    <div id="countComunicados" class="card-value" style="color: var(--purple);">—</div>
+                    <div class="card-accent" style="background: var(--purple);"></div>
+                </div>
+           </div>
+
+           <div class="charts-box" id="boxGraficos" style="display: none;">
+               <div class="chart-container">
+                   <div class="chart-title">Top 5 Ocorrências</div>
+                   <div class="chart-wrapper">
+                       <canvas id="chartOcorrencias"></canvas>
+                   </div>
+               </div>
+               <div class="chart-container">
+                   <div class="chart-title">Ocorrências por Horário da Leitura</div>
+                   <div class="chart-wrapper">
+                       <canvas id="chartHorasOcorrencias"></canvas>
+                   </div>
+               </div>
+           </div>
+       </div>
+
+       <div class="legend-bar">
+           <div class="legend-item"><span class="legend-dot" style="background:var(--blue)"></span> Normal</div>
+           <div class="legend-item"><span class="legend-dot" style="background:var(--cyan)"></span> Queda Suspeita (Erro/Subfaturamento)</div>
+           <div class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span> Fora de Média</div>
+           <div class="legend-item"><span class="legend-dot" style="background:var(--red)"></span> Estouro de Consumo</div>
+       </div>
+
+       <div class="controls-container">
+           <div id="filterContainer" class="filter-bar">
+               <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                   <label class="toggle-container">
+                       <input type="checkbox" id="chkRetidas" checked onchange="reprocessarDados()">
+                       <span class="toggle-label">Mostrar Faturas Retidas</span>
+                   </label>
+                   <div style="display:flex; align-items:center; gap:8px;">
+                       <button class="btn-filter active" onclick="reordenar('nome', event)">A–Z</button>
+                       <button class="btn-filter" onclick="reordenar('ocorrencia', event)">🏆 Rank de Ocorrências</button>
+                   </div>
+               </div>
+               <div id="atcContainer"></div>
+               <div id="uniOrgContainer"></div>
+               <div id="grupoMercadoContainer"></div>
+           </div>
+
+           <div id="searchContainer" class="search-bar">
+               <div class="search-wrap">
+                   <span class="search-icon">🔍</span>
+                   <input type="text" id="inputBusca" class="search-input" placeholder="Buscar leiturista..." oninput="filtrarTecnicos()">
+               </div>
+           </div>
+       </div>
+
+       <div id="tecnicosContainer" class="tecnicos-grid"></div>
+   </div>
+
+   <div id="tab-historico" class="tab-content">
+       <div class="history-panel">
+           <div class="history-header">
+               <h3 style="color:var(--text)">Evolução dos Uploads do Dia</h3>
+               <button class="btn-clear" onclick="limparHistorico()">🗑 Limpar Histórico</button>
+           </div>
+           <table id="tabelaHistorico">
+               <thead>
+                   <tr>
+                       <th>Hora do Upload</th>
+                       <th>Fornecimentos Lidos</th>
+                       <th>Total Ocorrências</th>
+                       <th>Quedas Risco</th>
+                       <th>Estouros</th>
+                   </tr>
+               </thead>
+               <tbody id="corpoHistorico">
+                   <tr>
+                       <td colspan="5" class="empty-message">Nenhum snapshot registrado hoje. Carregue um arquivo para começar.</td>
+                   </tr>
+               </tbody>
+           </table>
+       </div>
+   </div>
+
+   <div id="tab-ocorrencias" class="tab-content">
+       <div class="history-panel" style="margin-bottom: 20px;">
+           <div class="history-header">
+               <h3 style="color:var(--text)">Todas as Ocorrências</h3>
+               <span id="totalOcorrenciasPainel" style="color:var(--muted); font-size:0.85rem; font-weight:600;"></span>
+           </div>
+           <p style="color:var(--muted); font-size:0.85rem;">Clique em uma ocorrência para ver quais leituristas registraram e a quantidade de cada um. Funciona tanto para o painel de um único dia quanto para o Painel Somado (Consulta Servidor).</p>
+       </div>
+       <div id="ocorrenciasGeralContainer" class="tecnicos-grid"></div>
+   </div>
+
+   <div id="tab-consulta" class="tab-content">
+       <div class="history-panel" style="background: var(--surface2); margin-bottom: 20px;">
+           <h3 style="color:var(--text); margin-bottom: 16px;">Consultar Auditorias Salvas</h3>
+           <div class="controls-container" style="margin-bottom: 0;">
+               <div class="filter-bar" style="display:flex; flex-direction:row; gap: 12px; align-items:flex-end;">
+                   <div>
+                       <label style="display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px; font-weight: 600;">Data Início</label>
+                       <input type="date" id="filtroDataInicio" class="search-input" style="padding:8px; min-width: 140px;">
+                   </div>
+                   <div>
+                       <label style="display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px; font-weight: 600;">Data Fim</label>
+                       <input type="date" id="filtroDataFim" class="search-input" style="padding:8px; min-width: 140px;">
+                   </div>
+                   <button class="btn-sync" onclick="buscarHistoricoServidor(event)" style="margin-top:0; height: 38px;">
+                       🔍 Buscar Dados
+                   </button>
+               </div>
+               <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
+                   <div>
+                       <label style="display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px; font-weight: 600;">Cidade</label>
+                       <select id="filtroCidadeConsulta" class="search-input" style="padding:8px; min-width: 170px;" onchange="aplicarFiltrosConsulta()">
+                           <option value="">Todas as cidades</option>
+                       </select>
+                   </div>
+                   <div>
+                       <label style="display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px; font-weight: 600;">Grupo</label>
+                       <select id="filtroGrupoConsulta" class="search-input" style="padding:8px; min-width: 140px;" onchange="aplicarFiltrosConsulta()">
+                           <option value="">Todos os grupos</option>
+                       </select>
+                   </div>
+                   <span id="infoFiltroConsulta" style="color:var(--muted); font-size:0.82rem; font-weight:600;"></span>
+               </div>
+           </div>
+       </div>
+       
+       <div class="history-panel">
+          <div id="acoesConsulta" style="display: none; margin-bottom: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+              <span id="resumoConsulta" style="color: var(--cyan); font-weight: 700; font-size: 0.9rem;"></span>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                  <button class="btn-sync" onclick="carregarPainelConsulta()" style="margin-top: 0; background: var(--green);">📊 Carregar Painel Somado</button>
+                  <button class="btn-sync" onclick="exportarRelatorioFinalConsulta()" style="margin-top: 0; background: linear-gradient(135deg, var(--cyan), var(--blue));">📥 Baixar Relatório Final (Excel)</button>
+              </div>
+          </div>
+          <table id="tabelaConsultaServidor">
+              <thead>
+                  <tr>
+                      <th>Data Auditoria</th>
+                      <th>ATC</th>
+                      <th>Cidade</th>
+                      <th>Grupo</th>
+                      <th>Ativos Lidos</th>
+                      <th>Ocorrências</th>
+                      <th>Riscos</th>
+                      <th class="td-center">Ações</th>
+                  </tr>
+              </thead>
+              <tbody id="corpoConsultaServidor">
+                  <tr>
+                      <td colspan="8" class="empty-message">Clique em "Buscar Dados" para carregar o histórico do servidor.</td>
+                  </tr>
+              </tbody>
+          </table>
+      </div>
+   </div>
+
+</div>
+
+<div id="modalDetalhes" class="modal-overlay">
+   <div class="modal-content">
+       <div class="modal-header">
+           <h3 id="modalTitulo">Detalhamento <span id="modalCount" class="modal-badge-count">0</span></h3>
+           <div class="modal-actions">
+               <button id="btnExportarPDF" class="btn-export-pdf" style="display:none;" onclick="exportarPDFModal()">📄 PDF</button>
+               <button id="btnExportarModal" class="btn-export" style="display:none;" onclick="exportarDadosModal()">📥 Excel</button>
+               <button class="close-btn" onclick="fecharModal()">✕</button>
+           </div>
+       </div>
+       <div class="modal-body">
+           <table id="tabelaDetalhes">
+               <thead></thead>
+               <tbody id="corpoTabelaDetalhes"></tbody>
+           </table>
+       </div>
+   </div>
+</div>
+
+<script>
+
+   const codigosInativos = ["40501","40506","40507","40508","41501","41502","40500","41506","41508","42501","42508","43511","43513","44500","45500","41500","42509","230"];
+
+   let linhasCruas = [];
+   let dadosGlobaisTecnicos = {};
+   let ordenacaoAtual = 'nome';
+   let termoBuscaAtual = '';
+   let nomeTecnicoModalAtual = '';
+   let tipoModalAtual = '';
+   let direcaoOrdenacaoModal = true;
+   let colunaOrdenadaModalAtual = -1;
+   let chartInstancia = null;
+   let chartHorasInstancia = null;
+   let payloadAuditoriaDia = null;
+
+   // ─── Controle de Abas ───
+   function mudarAba(abaId) {
+       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+       
+       document.getElementById(`tab-${abaId}`).classList.add('active');
+       document.getElementById(`btn-tab-${abaId}`).classList.add('active');
+       
+       // Ao entrar na aba de consulta, já busca por padrão os dados salvos
+       if(abaId === 'consulta') {
+           buscarHistoricoServidor();
+       }
+
+       // Ao entrar na aba de ocorrências, garante que o painel esteja atualizado
+       if(abaId === 'ocorrencias') {
+           renderizarPainelOcorrenciasGeral();
+       }
+   }
+
+   // ─── Drag & Drop ───
+   const dropZone = document.getElementById('dropZone');
+   const fileInput = document.getElementById('fileInput');
+
+   dropZone.addEventListener('dragover',  (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+   dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('dragover'));
+   dropZone.addEventListener('drop', (e) => {
+       e.preventDefault(); dropZone.classList.remove('dragover');
+       if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; processarArquivo(e.dataTransfer.files[0]); }
+   });
+   fileInput.addEventListener('change', (e) => { if (e.target.files.length) processarArquivo(e.target.files[0]); });
+
+   // ─── Renderizador do Histórico Local ───
+   function renderizarHistorico() {
+    const historico = JSON.parse(localStorage.getItem('auditoria_snapshots') || '[]');
+    const tbody = document.getElementById('corpoHistorico');
+    
+    if (historico.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="empty-message">Nenhum snapshot registrado hoje.</td></tr>`;
+        return;
+    }
+    
+    tbody.innerHTML = '';
+    historico.forEach((snap) => {
+        const tr = document.createElement('tr');
+        
+        // Garante que os números existam, se não, usa 0
+        const ativos = (snap.ativos || 0).toLocaleString('pt-BR');
+        const ocorrencias = (snap.ocorrencias || 0).toLocaleString('pt-BR');
+        const riscos = (snap.riscos || 0).toLocaleString('pt-BR');
+        const estouros = (snap.estouros || 0).toLocaleString('pt-BR');
+        
+        const badgeLeituras = (snap.deltaAtivos > 0) ? `<span class="delta-badge delta-up">+${snap.deltaAtivos}</span>` : '';
+        const badgeOcorr = (snap.deltaOcorr > 0) ? `<span class="delta-badge delta-up">+${snap.deltaOcorr}</span>` : '';
+        
+        tr.innerHTML = ` 
+            <td style="font-family:'Space Mono', monospace; font-weight:700; color:var(--cyan);">${snap.hora}</td> 
+            <td><b>${ativos}</b>${badgeLeituras}</td> 
+            <td><b>${ocorrencias}</b>${badgeOcorr}</td> 
+            <td>${riscos}</td> 
+            <td>${estouros}</td> 
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+   function salvarSnapshot(totais) {
+       const hoje = new Date().toLocaleDateString('pt-BR');
+       const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+       let historico = JSON.parse(localStorage.getItem('auditoria_snapshots') || '[]');
+       
+       historico = historico.filter(s => s.data === hoje);
+
+       let deltaAtivos = 0;
+       let deltaOcorr = 0;
+
+       if (historico.length > 0) {
+           const ultimo = historico[historico.length - 1];
+           deltaAtivos = totais.ativos - ultimo.ativos;
+           deltaOcorr = totais.ocorrencias - ultimo.ocorrencias;
+           
+           if (ultimo.ativos === totais.ativos && ultimo.ocorrencias === totais.ocorrencias) {
+               renderizarHistorico();
+               return;
+           }
+       }
+
+       historico.push({
+           data: hoje,
+           hora: horaAtual,
+           ativos: totais.ativos,
+           ocorrencias: totais.ocorrencias,
+           riscos: totais.riscos,
+           estouros: totais.estouros,
+           deltaAtivos: deltaAtivos >= 0 ? deltaAtivos : 0,
+           deltaOcorr: deltaOcorr >= 0 ? deltaOcorr : 0
+       });
+
+       localStorage.setItem('auditoria_snapshots', JSON.stringify(historico));
+       renderizarHistorico();
+   }
+
+   function limparHistorico() {
+       if(confirm("Deseja realmente zerar o histórico de evolução de hoje?")) {
+           localStorage.removeItem('auditoria_snapshots');
+           renderizarHistorico();
+       }
+   }
+
+   document.addEventListener("DOMContentLoaded", renderizarHistorico);
+
+   function animarContador(el, valorFinal) {
+       const duration = 600; const startTime = performance.now(); const startVal = parseInt(el.textContent.replace(/\D/g, '')) || 0;
+       function step(now) {
+           const p = Math.min((now - startTime) / duration, 1);
+           const eased = 1 - Math.pow(1 - p, 3);
+           el.textContent = Math.round(startVal + eased * (valorFinal - startVal)).toLocaleString('pt-BR');
+           if (p < 1) requestAnimationFrame(step);
+       }
+       requestAnimationFrame(step);
+   }
+
+   function getInitials(nome) { return nome.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase(); }
+
+   function processarArquivo(file) {
+       if (!file) return;
+       const msg = document.getElementById('status-msg');
+       msg.innerHTML = '<span class="loader"></span><span style="color:var(--cyan)">Analisando dados do faturamento...</span>';
+
+       const reader = new FileReader();
+       reader.onload = function(evt) {
+           try {
+               const data = new Uint8Array(evt.target.result);
+               const workbook = XLSX.read(data, { type: 'array' });
+               const sheet = workbook.Sheets[workbook.SheetNames[0]];
+               const matriz = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+               let staticHeaderIdx = -1;
+               for (let i = 0; i < Math.min(matriz.length, 15); i++) {
+                   if (matriz[i].some(c => String(c).trim() === "Nome do TACE")) { staticHeaderIdx = i; break; }
+               }
+               if (staticHeaderIdx === -1) { msg.innerHTML = '<span style="color:var(--red)">✗ Cabeçalho "Nome do TACE" não localizado.</span>'; return; }
+
+               linhasCruas = XLSX.utils.sheet_to_json(sheet, { range: staticHeaderIdx });
+
+               if (linhasCruas.length > 0) {
+                   gerarFiltrosATC();
+                   reprocessarDados();
+                   msg.innerHTML = `<span style="color:var(--green)">✔ Planilha processada — ${linhasCruas.length.toLocaleString('pt-BR')} registros lidos</span>`;
+                   document.getElementById('filterContainer').style.display = 'flex';
+                   document.getElementById('searchContainer').style.display = 'flex';
+                   document.getElementById('boxGraficos').style.display = 'flex';
+               } else { msg.innerHTML = '<span style="color:var(--red)">✗ Arquivo vazio.</span>'; }
+           } catch(e) { msg.innerHTML = '<span style="color:var(--red)">✗ Erro estrutural no arquivo.</span>'; }
+       };
+       reader.readAsArrayBuffer(file);
+   }
+
+   function gerarFiltrosATC() {
+       if (!linhasCruas.length) return;
+       const chaves = Object.keys(linhasCruas[0]);
+       const colATC = chaves.find(c => c.trim().toUpperCase() === "ATC" || c.toLowerCase().includes("atc"));
+       const atcContainer = document.getElementById('atcContainer');
+
+       if (colATC) {
+           const atcsUnicos = [...new Set(linhasCruas.map(r => String(r[colATC] || "N/A").trim()))].sort();
+           if (atcsUnicos.length <= 1) { atcContainer.style.display = 'none'; return; }
+           let html = '<span style="font-size:0.78rem;font-weight:700;color:var(--muted);">Filtrar Cidades/ATC:</span>';
+           atcsUnicos.forEach(atc => { html += `<label class="toggle-container"><input type="checkbox" class="chk-atc" value="${atc}" checked onchange="reprocessarDados()"><span class="toggle-label" style="font-size:0.8rem;">${atc}</span></label>`; });
+           atcContainer.innerHTML = html; atcContainer.style.display = 'flex';
+       } else { atcContainer.innerHTML = ''; atcContainer.style.display = 'none'; }
+
+       gerarFiltroUniOrg(chaves);
+       gerarFiltroGrupoMercado(chaves);
+   }
+
+   // ─── Extração: Unidade Organizacional (coluna "Uni.Organizacional") ───
+   // Pega os caracteres depois do "-". Ex: "00001223-OVST" -> "OVST"
+   function extrairUnidadeOrganizacional(valor) {
+       if (!valor) return "-";
+       const partes = String(valor).trim().split('-');
+       if (partes.length < 2) return "-";
+       const sufixo = partes[partes.length - 1].trim().toUpperCase();
+       return sufixo || "-";
+   }
+
+   // ─── Extração: Grupo Mercado (coluna "Grupo") ───
+   // Pega os 2 dígitos (01 a 20) que aparecem no final do texto. Ex: "TIPO MERCADO COMUM 01" -> "01"
+   function extrairGrupoMercado(valor) {
+       if (!valor) return "-";
+       const match = String(valor).trim().match(/(\d{1,2})\s*$/);
+       if (!match) return "-";
+       const numero = parseInt(match[1], 10);
+       if (numero < 1 || numero > 20) return "-";
+       return String(numero).padStart(2, '0');
+   }
+
+   function colUniOrganizacional(chaves) {
+       return chaves.find(c => c.toLowerCase().includes("organizacional"));
+   }
+
+   function colGrupoMercadoColuna(chaves) {
+       return chaves.find(c => c.trim().toUpperCase() === "GRUPO")
+           || chaves.find(c => c.toLowerCase().includes("grupo") && !c.toLowerCase().includes("tarefa"));
+   }
+
+   // ─── Etiqueta de Grupo da planilha inteira ───
+   // Em vez de calcular por linha/técnico, olha as primeiras linhas da coluna "Grupo"
+   // e usa o primeiro valor válido (01 a 20) encontrado como a etiqueta de TODA a planilha
+   // que está sendo analisada — é isso que vai ser salvo/consultado no servidor.
+   function extrairGrupoDaPlanilha(chaves) {
+       if (!linhasCruas || !linhasCruas.length) return "-";
+       const colGrupo = colGrupoMercadoColuna(chaves);
+       if (!colGrupo) return "-";
+       for (let i = 0; i < Math.min(linhasCruas.length, 30); i++) {
+           const valor = extrairGrupoMercado(linhasCruas[i][colGrupo]);
+           if (valor !== "-") return valor;
+       }
+       return "-";
+   }
+
+   function gerarFiltroUniOrg(chaves) {
+       const container = document.getElementById('uniOrgContainer');
+       const colUniOrg = colUniOrganizacional(chaves);
+       if (!colUniOrg) { container.innerHTML = ''; container.style.display = 'none'; return; }
+
+       const valoresUnicos = [...new Set(linhasCruas.map(r => extrairUnidadeOrganizacional(r[colUniOrg])).filter(v => v !== "-"))].sort();
+       if (valoresUnicos.length <= 1) { container.innerHTML = ''; container.style.display = 'none'; return; }
+
+       let html = '<span style="font-size:0.78rem;font-weight:700;color:var(--muted);">Filtrar Unidade Organizacional:</span>';
+       valoresUnicos.forEach(val => { html += `<label class="toggle-container"><input type="checkbox" class="chk-uniorg" value="${val}" checked onchange="reprocessarDados()"><span class="toggle-label" style="font-size:0.8rem;">${val}</span></label>`; });
+       container.innerHTML = html; container.style.display = 'flex';
+   }
+
+   function gerarFiltroGrupoMercado(chaves) {
+       const container = document.getElementById('grupoMercadoContainer');
+       const colGrupo = colGrupoMercadoColuna(chaves);
+       if (!colGrupo) { container.innerHTML = ''; container.style.display = 'none'; return; }
+
+       const valoresUnicos = [...new Set(linhasCruas.map(r => extrairGrupoMercado(r[colGrupo])).filter(v => v !== "-"))].sort();
+       if (valoresUnicos.length <= 1) { container.innerHTML = ''; container.style.display = 'none'; return; }
+
+       let html = '<span style="font-size:0.78rem;font-weight:700;color:var(--muted);">Filtrar Grupo:</span>';
+       valoresUnicos.forEach(val => { html += `<label class="toggle-container"><input type="checkbox" class="chk-grupomercado" value="${val}" checked onchange="reprocessarDados()"><span class="toggle-label" style="font-size:0.8rem;">${val}</span></label>`; });
+       container.innerHTML = html; container.style.display = 'flex';
+   }
+
+   function reprocessarDados() {
+       if (!linhasCruas.length) return;
+       const mostrarRetidas = document.getElementById('chkRetidas').checked;
+       const chaves = Object.keys(linhasCruas[0]);
+       const colFaturaRetida = chaves.find(c => c.toLowerCase().includes("fatura retida"));
+       const colATC = chaves.find(c => c.trim().toUpperCase() === "ATC" || c.toLowerCase().includes("atc"));
+
+       let linesFiltered = linhasCruas;
+       if (!mostrarRetidas && colFaturaRetida) {
+           linesFiltered = linhasCruas.filter(row => {
+               const val = String(row[colFaturaRetida] || "").trim().toLowerCase();
+               return !(val === "sim" || val === "s" || val === "x" || val === "verdadeiro" || val === "retida");
+           });
+       }
+       if (colATC) {
+           const chks = document.querySelectorAll('.chk-atc');
+           if (chks.length > 0) {
+               const sel = Array.from(chks).filter(c => c.checked).map(c => c.value);
+               linesFiltered = linesFiltered.filter(row => sel.includes(String(row[colATC] || "N/A").trim()));
+           }
+       }
+
+       const colUniOrg = colUniOrganizacional(chaves);
+       if (colUniOrg) {
+           const chksUniOrg = document.querySelectorAll('.chk-uniorg');
+           if (chksUniOrg.length > 0) {
+               const selUniOrg = Array.from(chksUniOrg).filter(c => c.checked).map(c => c.value);
+               linesFiltered = linesFiltered.filter(row => selUniOrg.includes(extrairUnidadeOrganizacional(row[colUniOrg])));
+           }
+       }
+
+       const colGrupoMerc = colGrupoMercadoColuna(chaves);
+       if (colGrupoMerc) {
+           const chksGrupoMerc = document.querySelectorAll('.chk-grupomercado');
+           if (chksGrupoMerc.length > 0) {
+               const selGrupoMerc = Array.from(chksGrupoMerc).filter(c => c.checked).map(c => c.value);
+               linesFiltered = linesFiltered.filter(row => selGrupoMerc.includes(extrairGrupoMercado(row[colGrupoMerc])));
+           }
+       }
+
+       processarOperacao(linesFiltered, chaves);
+   }
+
+   function processarOperacao(rows, chaves) {
+       let totaisGerais = { ativos: 0, inativos: 0, ocorrencias: 0, riscos: 0, estouros: 0, comunicados: 0 };
+       dadosGlobaisTecnicos = {};
+       let contagemOcorrenciasGeral = {};
+       let contagemHorasOcorrencias = {};
+
+       const colNomeTace     = chaves.find(c => c.trim() === "Nome do TACE") || "Nome do TACE";
+       const colCO1          = chaves.find(c => c.trim() === "CO1 Atual") || "CO1 Atual";
+       const colCausas       = chaves.find(c => c.trim() === "Causas de Leitura/Não Leitura Atual" || c.trim() === "Causa de Leitura/Não leitura Atual" || c.toLowerCase().includes("causa")) || "Causas de Leitura/Não leitura Atual";
+       const colFatura       = chaves.find(c => c.trim() === "Faturas Impressas" || c.trim() === "Fatura Impressas") || "Faturas impressas";
+       const colCodigo       = chaves.find(c => c.toLowerCase().includes("fornecimento")) || chaves[0];
+       const colEndereco     = chaves.find(c => c.toLowerCase().includes("endere")) || chaves[1];
+       const colHora         = chaves.find(c => c.toLowerCase().includes("hora da leitura")) || chaves[2];
+       const colPhotos       = chaves.find(c => c.toLowerCase().includes("total de fotos") || c.toLowerCase().includes("fotos"));
+       const colLeituraAtual = chaves.find(c => c.trim() === "Leitura") || "Leitura";
+       const colLeituraAnt   = chaves.find(c => c.toLowerCase().includes("leitura anterior")) || "Leitura Anterior";
+       const colHidrometro   = chaves.find(c => c.toLowerCase().includes("hidrômetro") || c.toLowerCase().includes("hidrometro")) || "Hidrômetro";
+       const colConsumo      = chaves.find(c => c.toLowerCase().includes("consumo medido")) || "Consumo Medido";
+       const colMedia        = chaves.find(c => c.toLowerCase().includes("média de consumo") || c.toLowerCase().includes("media de consumo")) || "Média de consumo";
+       const colValorFatura  = chaves.find(c => c.toLowerCase().includes("valor da fatura") || c.toLowerCase().includes("valor fatura")) || "Valor da fatura";
+       const colObsGeral     = chaves.find(c => c.trim() === "Observação Geral" || c.toLowerCase().includes("observação geral")) || "Observação Geral";
+       const colFaturaRetida = chaves.find(c => c.toLowerCase().includes("fatura retida"));
+       const colCategoriaUso = chaves.find(c => c.toLowerCase().includes("categoria de uso") || c.toLowerCase().includes("categoria")) || "Categoria de Uso";
+       
+       const colTarefa = chaves.find(c => c.toLowerCase().includes("tarefa") || c.toLowerCase().includes("rotação") || c.toLowerCase().includes("rotacao")) || "Tarefa";
+        const colComunicados = chaves.find(c => c.toLowerCase().includes("comunicados impressos")) || "Quantidade comunicados impressos";
+
+       const mapaUltimoFornecimento = new Map();
+       rows.forEach(row => {
+           const idFornecimento = String(row[colCodigo] || "").trim();
+           if(idFornecimento) {
+               mapaUltimoFornecimento.set(idFornecimento, row);
+           }
+       });
+
+       mapaUltimoFornecimento.forEach(row => {
+           const nomeTace = String(row[colNomeTace] || "NÃO IDENTIFICADO").trim();
+           const valorCO1 = String(row[colCO1] || "").split('-')[0].trim();
+           const causa    = String(row[colCausas] || "").trim();
+           const faturaRaw = String(row[colFatura] || "").trim().toLowerCase();
+           const horaLeitura = String(row[colHora] || "").trim();
+
+           const consumoNum = parseFloat(String(row[colConsumo] || "0").replace(/\./g, '').replace(',', '.')) || 0;
+           const mediaNum   = parseFloat(String(row[colMedia]   || "0").replace(/\./g, '').replace(',', '.')) || 0;
+           
+           const categoriaUso = String(row[colCategoriaUso] || "").trim().toUpperCase();
+           const hidrometroVal = String(row[colHidrometro] || "-").trim();
+           
+           const tarefaBruta = String(row[colTarefa] || "").trim();
+           const dadosRota = extrairDadosDaTarefa(tarefaBruta);
+
+           let isQuedaSuspeita = false;
+           let isEstouro = false;
+           let classAnomalia = "NORMAL";
+
+           if (consumoNum === -1 || consumoNum === -2) {
+               classAnomalia = "DESVIO_MINIMO";
+               totaisGerais.riscos++; 
+           } else if (consumoNum >= 10) {
+               // Verifica primeiro se o consumo medido é de pelo menos 10m³
+               // Depois analisa se a diferença percentual em relação à média é de 50% ou mais (para cima ou para baixo)
+               if (consumoNum <= mediaNum * 0.5) {
+                   isQuedaSuspeita = true; classAnomalia = "QUEDA"; totaisGerais.riscos++;
+               } else if (consumoNum >= mediaNum * 1.5) {
+                   isEstouro = true; classAnomalia = "ESTOURO"; totaisGerais.estouros++;
+               }
+           }
+
+           const isInativo = codigosInativos.includes(valorCO1);
+           if (isInativo) totaisGerais.inativos++; else totaisGerais.ativos++;
+                    if (!dadosGlobaisTecnicos[nomeTace]) {
+               dadosGlobaisTecnicos[nomeTace] = {
+                   nome: nomeTace, leiturasAtivas: 0, leiturasTotal: 0, faturasNao: 0, ocorrenciasAtivas: 0, foraDaMediaCount: 0, comunicados: 0,
+                   listaOcorr: {}, linhasOcorrencias: [], linhasForaMedia: [], linhasNaoImpressas: []
+               };
+           }
+            const qtdComunicados = parseInt(row[colComunicados]) || 0; 
+            totaisGerais.comunicados += qtdComunicados;
+            dadosGlobaisTecnicos[nomeTace].comunicados += qtdComunicados;
+            dadosGlobaisTecnicos[nomeTace].leiturasTotal++;
+           if (!isInativo) {
+               dadosGlobaisTecnicos[nomeTace].leiturasAtivas++;
+               
+               if (faturaRaw === "não" || faturaRaw === "nao") {
+                   dadosGlobaisTecnicos[nomeTace].faturasNao++;
+                   dadosGlobaisTecnicos[nomeTace].linhasNaoImpressas.push({
+                       codigo: String(row[colCodigo] || "-"),
+                       endereco: String(row[colEndereco] || "-"),
+                       leitura: String(row[colLeituraAtual] || "-"),
+                       hidrometro: hidrometroVal,
+                       causa: causa || "-",
+                       obs: String(row[colObsGeral] || "-")
+                   });
+               }
+
+               if (isQuedaSuspeita || isEstouro || classAnomalia === "DESVIO_MINIMO") {
+                   dadosGlobaisTecnicos[nomeTace].foraDaMediaCount++;
+                   dadosGlobaisTecnicos[nomeTace].linhasForaMedia.push({
+                       codigo: String(row[colCodigo] || "-"), endereco: String(row[colEndereco] || "-"),
+                       leitura: String(row[colLeituraAtual] || "-"), leituraAnterior: String(row[colLeituraAnt] || "-"),
+                       hidrometro: hidrometroVal,
+                       categoriaUso: categoriaUso,
+                       consumo: row[colConsumo] !== undefined ? String(row[colConsumo]) : "0",
+                       media: row[colMedia] !== undefined ? String(row[colMedia]) : "0",
+                       valorFatura: String(row[colValorFatura] || "-"),
+                       causa: causa || "-", tipoAnomalia: classAnomalia,
+                       obs: String(row[colObsGeral] || "-"),
+                       faturaRetida: colFaturaRetida ? String(row[colFaturaRetida] || "Não") : "Não",
+                       grupoInfo: dadosRota 
+                   });
+               }
+
+               if (causa !== "") {
+                   totaisGerais.ocorrencias++;
+                   dadosGlobaisTecnicos[nomeTace].ocorrenciasAtivas++;
+                   dadosGlobaisTecnicos[nomeTace].listaOcorr[causa] = (dadosGlobaisTecnicos[nomeTace].listaOcorr[causa] || 0) + 1;
+                   contagemOcorrenciasGeral[causa] = (contagemOcorrenciasGeral[causa] || 0) + 1;
+                   
+                   if (horaLeitura && horaLeitura !== "-") {
+                       const horaTratada = horaLeitura.split(':')[0]; 
+                       if (!isNaN(horaTratada) && horaTratada !== "") {
+                           const labelHora = horaTratada + "h";
+                           contagemHorasOcorrencias[labelHora] = (contagemHorasOcorrencias[labelHora] || 0) + 1;
+                       }
+                   }
+
+                   dadosGlobaisTecnicos[nomeTace].linhasOcorrencias.push({
+                       codigo: String(row[colCodigo] || "-"), endereco: String(row[colEndereco] || "-"),
+                       hora: horaLeitura || "-", co1: valorCO1 || "-",
+                       causa: causa || "-", obs: String(row[colObsGeral] || "-"),
+                       fotos: colPhotos ? String(row[colPhotos] || "0") : "-",
+                       fatura: String(row[colFatura] || "-"),
+                       hidrometro: hidrometroVal,
+                       categoriaUso: categoriaUso,
+                       grupoInfo: dadosRota 
+                   });
+               }
+           }
+       });
+
+       const percGeral = totaisGerais.ativos > 0 ? ((totaisGerais.ocorrencias / totaisGerais.ativos) * 100).toFixed(1) : 0;
+       animarContador(document.getElementById('countAtivo'), totaisGerais.ativos);
+       animarContador(document.getElementById('countOcorrencia'), totaisGerais.ocorrencias);
+       animarContador(document.getElementById('countRisco'), totaisGerais.riscos);
+       animarContador(document.getElementById('countEstouro'), totaisGerais.estouros);
+       animarContador(document.getElementById('countComunicados'), totaisGerais.comunicados);
+       document.getElementById('percentOcorrencia').textContent = `${percGeral}% das Leituras`;
+
+       atualizarGraficos(contagemOcorrenciasGeral, contagemHorasOcorrencias);
+       renderizarGrade(ordenacaoAtual);
+       renderizarPainelOcorrenciasGeral();
+
+       // --- PREPARAÇÃO DO PAYLOAD PARA O SERVIDOR ---
+       let atcsUnicos = new Set();
+       let cidadesUnicas = new Set();
+       let gruposUnicos = new Set();
+
+       for (let [id, row] of mapaUltimoFornecimento) {
+           const infoRota = extrairDadosDaTarefa(row[colTarefa]);
+           if (infoRota.atc && infoRota.atc !== "-") atcsUnicos.add(infoRota.atc);
+           if (infoRota.cidade && infoRota.cidade !== "-") cidadesUnicas.add(infoRota.cidade);
+           if (infoRota.grupo && infoRota.grupo !== "-") gruposUnicos.add(infoRota.grupo);
+       }
+      // --- PREPARAÇÃO DO PAYLOAD PARA O SERVIDOR ---
+       const colATC = chaves.find(c => c.trim().toUpperCase() === "ATC" || c.toLowerCase().includes("atc"));
+       const colCidade = chaves.find(c => c.toLowerCase().includes("cidade") || c.toLowerCase().includes("municip"));
+       
+       let todasCidades = new Set();
+       let todosATCs = new Set();
+       let todosGrupos = new Set();
+       
+       // 1. COLETA E PADRONIZA OS NOMES
+       for (let [id, row] of mapaUltimoFornecimento) {
+           const infoRota = extrairDadosDaTarefa(row[colTarefa] || "");
+           
+           let atcDaLinha = colATC ? String(row[colATC] || "").trim() : infoRota.atc;
+           let cidadeDaLinha = colCidade ? String(row[colCidade] || "").trim() : infoRota.cidade;
+           
+           if (atcDaLinha && atcDaLinha !== "-" && atcDaLinha !== "") {
+               atcDaLinha = atcDaLinha.toUpperCase().trim();
+               // Garante que o termo "ATC " esteja no nome para o filtro
+               if (!atcDaLinha.startsWith("ATC")) {
+                   atcDaLinha = "ATC " + atcDaLinha;
+               }
+               // Remove espaços duplos acidentais
+               atcDaLinha = atcDaLinha.replace(/\s+/g, ' ');
+               todosATCs.add(atcDaLinha);
+           }
+           
+           if (cidadeDaLinha && cidadeDaLinha !== "-" && cidadeDaLinha !== "") todasCidades.add(cidadeDaLinha.trim());
+           if (infoRota.grupo && infoRota.grupo !== "-") todosGrupos.add(infoRota.grupo.trim());
+       }
+
+       // 2. CONVERTE PARA TEXTO SEPARADO *APENAS* POR VÍRGULA (SEM ESPAÇOS)
+       // Ex: "ATC CACAPAVA,ATC CAMPOS DO JORDAO,ATC MONTEIRO LOBATO"
+       const atcGlobal = Array.from(todosATCs).length > 0 ? Array.from(todosATCs).join(",") : "-";
+       const cidadeGlobal = Array.from(todasCidades).length > 0 ? Array.from(todasCidades).join(",") : "-";
+       const grupoGlobal = Array.from(todosGrupos).length > 0 ? Array.from(todosGrupos).join(",") : "-";
+
+       // 3. INJETA A INFORMAÇÃO EM CADA TÉCNICO E ANOMALIA
+       // Descobre o ATC/Cidade/Grupo mais frequente de cada técnico, olhando TODAS as
+       // linhas cruas dele na planilha (não só a primeira anomalia, que não carrega
+       // mais a coluna ATC original depois de processada).
+       let atcPorTecnico = {}, cidadePorTecnico = {}, grupoPorTecnico = {};
+
+       for (let [id, row] of mapaUltimoFornecimento) {
+           const nomeTaceRow = String(row[colNomeTace] || "NÃO IDENTIFICADO").trim();
+           const infoRotaRow = extrairDadosDaTarefa(row[colTarefa] || "");
+
+           let atcRow = colATC ? String(row[colATC] || "").trim() : infoRotaRow.atc;
+           if (atcRow && atcRow !== "-" && atcRow !== "") {
+               atcRow = atcRow.toUpperCase().trim();
+               if (!atcRow.startsWith("ATC")) atcRow = "ATC " + atcRow;
+               atcRow = atcRow.replace(/\s+/g, ' ');
+               atcPorTecnico[nomeTaceRow] = atcPorTecnico[nomeTaceRow] || {};
+               atcPorTecnico[nomeTaceRow][atcRow] = (atcPorTecnico[nomeTaceRow][atcRow] || 0) + 1;
+           }
+
+           let cidadeRow = colCidade ? String(row[colCidade] || "").trim() : infoRotaRow.cidade;
+           if (cidadeRow && cidadeRow !== "-" && cidadeRow !== "") {
+               cidadePorTecnico[nomeTaceRow] = cidadePorTecnico[nomeTaceRow] || {};
+               cidadePorTecnico[nomeTaceRow][cidadeRow] = (cidadePorTecnico[nomeTaceRow][cidadeRow] || 0) + 1;
+           }
+
+           if (infoRotaRow.grupo && infoRotaRow.grupo !== "-") {
+               grupoPorTecnico[nomeTaceRow] = grupoPorTecnico[nomeTaceRow] || {};
+               grupoPorTecnico[nomeTaceRow][infoRotaRow.grupo] = (grupoPorTecnico[nomeTaceRow][infoRotaRow.grupo] || 0) + 1;
+           }
+       }
+
+       function maisFrequente(mapaContagem) {
+           if (!mapaContagem) return "-";
+           let melhor = "-", melhorQtd = 0;
+           for (let chave in mapaContagem) {
+               if (mapaContagem[chave] > melhorQtd) { melhor = chave; melhorQtd = mapaContagem[chave]; }
+           }
+           return melhor;
+       }
+
+       // Unidade Organizacional (coluna "Uni.Organizacional") e Grupo Mercado (coluna "Grupo", 01 a 20)
+       // — mesma lógica de "mais frequente por técnico" usada acima para ATC/Cidade/Grupo(Tarefa).
+       const colUniOrgAgg = colUniOrganizacional(chaves);
+       const colGrupoMercAgg = colGrupoMercadoColuna(chaves);
+       let uniOrgPorTecnico = {}, grupoMercadoPorTecnico = {};
+
+       for (let [id, row] of mapaUltimoFornecimento) {
+           const nomeTaceRow = String(row[colNomeTace] || "NÃO IDENTIFICADO").trim();
+
+           if (colUniOrgAgg) {
+               const uniOrgRow = extrairUnidadeOrganizacional(row[colUniOrgAgg]);
+               if (uniOrgRow && uniOrgRow !== "-") {
+                   uniOrgPorTecnico[nomeTaceRow] = uniOrgPorTecnico[nomeTaceRow] || {};
+                   uniOrgPorTecnico[nomeTaceRow][uniOrgRow] = (uniOrgPorTecnico[nomeTaceRow][uniOrgRow] || 0) + 1;
+               }
+           }
+
+           if (colGrupoMercAgg) {
+               const grupoMercRow = extrairGrupoMercado(row[colGrupoMercAgg]);
+               if (grupoMercRow && grupoMercRow !== "-") {
+                   grupoMercadoPorTecnico[nomeTaceRow] = grupoMercadoPorTecnico[nomeTaceRow] || {};
+                   grupoMercadoPorTecnico[nomeTaceRow][grupoMercRow] = (grupoMercadoPorTecnico[nomeTaceRow][grupoMercRow] || 0) + 1;
+               }
+           }
+       }
+
+       // Etiqueta de Grupo da planilha inteira (01 a 20) — olha as primeiras linhas da
+       // coluna "Grupo" e usa o primeiro valor válido encontrado como etiqueta de TODA
+       // a planilha analisada (é essa que vai para o servidor e aparece na consulta).
+       const grupoPlanilhaTag = extrairGrupoDaPlanilha(chaves);
+
+       for (let tecnico in dadosGlobaisTecnicos) {
+           dadosGlobaisTecnicos[tecnico].atc = maisFrequente(atcPorTecnico[tecnico]);
+           dadosGlobaisTecnicos[tecnico].cidade = maisFrequente(cidadePorTecnico[tecnico]);
+           dadosGlobaisTecnicos[tecnico].grupo = maisFrequente(grupoPorTecnico[tecnico]);
+           dadosGlobaisTecnicos[tecnico].unidadeOrganizacional = maisFrequente(uniOrgPorTecnico[tecnico]);
+           dadosGlobaisTecnicos[tecnico].grupoMercado = grupoPlanilhaTag !== "-" ? grupoPlanilhaTag : maisFrequente(grupoMercadoPorTecnico[tecnico]);
+
+           // Carimba cada anomalia individualmente com o ATC/Cidade/Grupo do próprio técnico
+           dadosGlobaisTecnicos[tecnico].linhasForaMedia = (dadosGlobaisTecnicos[tecnico].linhasForaMedia || []).map(anomalia => ({
+               ...anomalia,
+               atc: dadosGlobaisTecnicos[tecnico].atc,
+               cidade: dadosGlobaisTecnicos[tecnico].cidade,
+               grupo: dadosGlobaisTecnicos[tecnico].grupo,
+               unidadeOrganizacional: dadosGlobaisTecnicos[tecnico].unidadeOrganizacional,
+               grupoMercado: dadosGlobaisTecnicos[tecnico].grupoMercado
+           }));
+       }
+
+       const anomaliasComFiltros = Object.values(dadosGlobaisTecnicos).flatMap(tec => tec.linhasForaMedia || []);
+
+       // 4. MONTA O PACOTE FINAL
+       // O campo "grupo" salvo/consultado no servidor agora prioriza a etiqueta (01 a 20)
+       // extraída da coluna "Grupo" da planilha; se a coluna não existir, cai no cálculo antigo.
+       payloadAuditoriaDia = {
+           dataAuditoria: new Date().toISOString().split('T')[0],
+           atc: atcGlobal,             
+           cidade: cidadeGlobal,       
+           grupo: grupoPlanilhaTag !== "-" ? grupoPlanilhaTag : grupoGlobal,
+           resumo: totaisGerais,
+           anomalias: anomaliasComFiltros,
+           dados_completos: dadosGlobaisTecnicos
+         };
+
+       document.getElementById('btnSync').style.display = 'inline-flex';
+       // ----------------------------------------------
+       // ----------------------------------------------
+    
+       salvarSnapshot(totaisGerais);
+   }
+
+   function atualizarGraficos(contagemCausas, contagemHoras) {
+       const ctx = document.getElementById('chartOcorrencias').getContext('2d');
+       const sortedCausas = Object.entries(contagemCausas).sort((a,b) => b[1]-a[1]).slice(0,5);
+       const labels = sortedCausas.map(item => item[0].substring(0, 20) + '...');
+       const data = sortedCausas.map(item => item[1]);
+
+       if (chartInstancia) chartInstancia.destroy();
+       chartInstancia = new Chart(ctx, {
+           type: 'doughnut',
+           data: {
+               labels: labels,
+               datasets: [{
+                   data: data,
+                   backgroundColor: ['#c084fc', '#4f9cf9', '#f97171', '#f9c74f', '#22d3ee'],
+                   borderWidth: 0, hoverOffset: 4
+               }]
+           },
+           options: {
+               responsive: true, maintainAspectRatio: false,
+               plugins: {
+                   legend: { position: 'right', labels: { color: '#7d8fa8', font: { family: "'DM Sans', sans-serif", size: 9 }, boxWidth: 10 } },
+                   tooltip: { backgroundColor: '#1c2230', titleColor: '#e6edf3', bodyColor: '#e6edf3', borderColor: '#313d52', borderWidth: 1 }
+               },
+               cutout: '70%'
+           }
+       });
+
+       const ctxHoras = document.getElementById('chartHorasOcorrencias').getContext('2d');
+       const horasOrdenadas = Object.keys(contagemHoras).sort((a, b) => parseInt(a) - parseInt(b));
+       const dadosHoras = horasOrdenadas.map(h => contagemHoras[h]);
+
+       if (chartHorasInstancia) chartHorasInstancia.destroy();
+       chartHorasInstancia = new Chart(ctxHoras, {
+           type: 'bar',
+           data: {
+               labels: horasOrdenadas,
+               datasets: [{
+                   label: 'Qtd Ocorrências',
+                   data: dadosHoras,
+                   backgroundColor: 'rgba(79, 156, 249, 0.4)',
+                   borderColor: '#4f9cf9',
+                   borderWidth: 1,
+                   borderRadius: 4
+               }]
+           },
+           options: {
+               responsive: true, maintainAspectRatio: false,
+               onClick: (evt, elements) => {
+                   if (elements && elements.length > 0) {
+                       const idx = elements[0].index;
+                       const horaLabel = horasOrdenadas[idx];
+                       if (horaLabel !== undefined) abrirModalHora(horaLabel);
+                   }
+               },
+               onHover: (evt, elements) => {
+                   evt.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+               },
+               scales: {
+                   x: { grid: { display: false }, ticks: { color: '#7d8fa8', font: { size: 9 } } },
+                   y: { grid: { color: '#2f3b4e' }, ticks: { color: '#7d8fa8', font: { size: 9 }, precision: 0 } }
+               },
+               plugins: {
+                   legend: { display: false },
+                   tooltip: { backgroundColor: '#1c2230', titleColor: '#e6edf3', bodyColor: '#e6edf3' }
+               }
+           }
+       });
+   }
+
+   function filtrarTecnicos() {
+       termoBuscaAtual = document.getElementById('inputBusca').value.toLowerCase().trim();
+       renderizarGrade(ordenacaoAtual);
+   }
+
+   function reordenar(tipo, event) {
+       ordenacaoAtual = tipo;
+       document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+       if (event) event.target.classList.add('active');
+       renderizarGrade(ordenacaoAtual);
+   }
+
+   function renderizarGrade(criterio) {
+       const container = document.getElementById('tecnicosContainer');
+       container.innerHTML = "";
+
+       let arr = Object.values(dadosGlobaisTecnicos);
+       if (termoBuscaAtual) arr = arr.filter(t => t.nome.toLowerCase().includes(termoBuscaAtual));
+       
+       if (criterio === 'nome') arr.sort((a, b) => a.nome.localeCompare(b.nome));
+       else arr.sort((a, b) => b.ocorrenciasAtivas - a.ocorrenciasAtivas);
+
+       if (arr.length === 0) {
+           container.innerHTML = `<div class="no-data-state"><svg width="64" height="64" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><p>Nenhum leiturista encontrado.</p></div>`;
+           return;
+       }
+
+       arr.forEach((t, idx) => {
+           const card = document.createElement('div');
+           card.className = 'tecnico-card';
+           card.style.animationDelay = `${idx * 0.04}s`;
+           card.onclick = () => abrirModal(t.nome, 'ocorrencia');
+
+           const nomeEsc = t.nome.replace(/'/g, "\\'");
+           const efetividade = t.leiturasTotal > 0 ? (((t.leiturasTotal - t.ocorrenciasAtivas) / t.leiturasTotal) * 100).toFixed(1) : 0;
+
+           let occHtml = "";
+           Object.entries(t.listaOcorr).sort((a,b) => b[1]-a[1]).forEach(([txt, qtd]) => {
+               occHtml += `<div class="ocorrencia-linha"><span>${txt}</span><span class="occ-count">${qtd}</span></div>`;
+           });
+
+           let medalhaHtml = '';
+           if (criterio === 'ocorrencia' && t.ocorrenciasAtivas > 0 && !termoBuscaAtual) {
+               if (idx === 0) medalhaHtml = '<span class="medal-icon">🥇</span>';
+               else if (idx === 1) medalhaHtml = '<span class="medal-icon">🥈</span>';
+               else if (idx === 2) medalhaHtml = '<span class="medal-icon">🥉</span>';
+           }
+
+          card.innerHTML = `
+               <div class="tecnico-header">
+                   <div class="tecnico-header-name">
+                       <div class="avatar">${getInitials(t.nome)}</div>
+                       <span>${t.nome}</span>
+                   </div>
+                   ${medalhaHtml || '<span style="color:var(--cyan); opacity:0.7; font-size:1rem;">↗</span>'}
+               </div>
+               
+               <div class="tecnico-stats" style="grid-template-columns: repeat(5, 1fr);">
+                   <div class="stat-box st-leituras">
+                       <small>Lidos</small><b>${t.leiturasTotal}</b>
+                   </div>
+                   <div class="stat-box st-naoimp" onclick="event.stopPropagation(); abrirModal('${nomeEsc}', 'naoimp')">
+                       <small>Não Imp.</small><b>${t.faturasNao}</b>
+                   </div>
+                   <div class="stat-box st-foramedia" onclick="event.stopPropagation(); abrirModal('${nomeEsc}', 'foramedia')">
+                       <small>Anomalia</small><b>${t.foraDaMediaCount}</b>
+                   </div>
+                   <div class="stat-box st-cods">
+                       <small>Ocorrên.</small><b>${t.ocorrenciasAtivas}</b>
+                   </div>
+                   <div class="stat-box" style="color: var(--cyan);">
+                       <small style="color: var(--cyan); opacity: 0.7;">Comun.</small><b>${t.comunicados}</b>
+                   </div>
+               </div>
+
+               <div class="tecnico-body">
+                   ${occHtml || '<div style="color:var(--faint);text-align:center;padding-top:12px;font-size:0.8rem;">Tarefa Limpa ✔</div>'}
+               </div>
+               <div class="tecnico-footer">
+                   <div class="footer-row"><span class="footer-label">Taxa de Sucesso</span><span class="footer-value">${efetividade}%</span></div>
+                   <div class="progress-track"><div class="progress-fill" style="width:${efetividade}%"></div></div>
+               </div>
+           `;
+           container.appendChild(card);
+       });
+   }
+
+   // ─── Painel Geral de Ocorrências (aba "Ocorrências") ───
+   // Funciona tanto para o painel de um único dia quanto para o Painel Somado,
+   // pois ambos alimentam a mesma variável global `dadosGlobaisTecnicos`.
+   function renderizarPainelOcorrenciasGeral() {
+       const container = document.getElementById('ocorrenciasGeralContainer');
+       if (!container) return;
+       container.innerHTML = '';
+
+       let causasTotais = {};
+       let causasPorTecnico = {};
+
+       for (let tec in dadosGlobaisTecnicos) {
+           const listaOcorr = dadosGlobaisTecnicos[tec].listaOcorr || {};
+           for (let causa in listaOcorr) {
+               const qtd = listaOcorr[causa] || 0;
+               causasTotais[causa] = (causasTotais[causa] || 0) + qtd;
+               if (!causasPorTecnico[causa]) causasPorTecnico[causa] = {};
+               causasPorTecnico[causa][tec] = (causasPorTecnico[causa][tec] || 0) + qtd;
+           }
+       }
+
+       window.dadosOcorrenciasPorTecnico = causasPorTecnico;
+
+       const causasOrdenadas = Object.entries(causasTotais).sort((a, b) => b[1] - a[1]);
+       const totalGeral = causasOrdenadas.reduce((s, [, q]) => s + q, 0);
+
+       const elTotal = document.getElementById('totalOcorrenciasPainel');
+       if (elTotal) elTotal.textContent = causasOrdenadas.length > 0 ? `${causasOrdenadas.length} tipos · ${totalGeral} ocorrências no total` : '';
+
+       if (causasOrdenadas.length === 0) {
+           container.innerHTML = `<div class="no-data-state"><svg width="64" height="64" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><p>Nenhuma ocorrência registrada. Carregue um arquivo ou abra um painel salvo.</p></div>`;
+           return;
+       }
+
+       const frag = document.createDocumentFragment();
+       causasOrdenadas.forEach(([causa, qtd], idx) => {
+           const qtdTecnicos = Object.keys(causasPorTecnico[causa] || {}).length;
+           const perc = totalGeral > 0 ? ((qtd / totalGeral) * 100).toFixed(1) : 0;
+           const causaEsc = causa.replace(/'/g, "\\'");
+
+           const card = document.createElement('div');
+           card.className = 'tecnico-card';
+           card.style.animationDelay = `${idx * 0.03}s`;
+           card.onclick = () => abrirModalOcorrenciaGeral(causaEsc);
+           card.innerHTML = `
+               <div class="tecnico-header">
+                   <div class="tecnico-header-name">
+                       <span>${causa}</span>
+                   </div>
+                   <span class="occ-count" style="font-size:0.9rem;">${qtd}</span>
+               </div>
+               <div class="tecnico-body" style="max-height:none;">
+                   <div class="ocorrencia-linha"><span>Leituristas envolvidos</span><span class="occ-count" style="background:var(--blue-dim); color:var(--blue);">${qtdTecnicos}</span></div>
+               </div>
+               <div class="tecnico-footer">
+                   <div class="footer-row"><span class="footer-label">% do Total de Ocorrências</span><span class="footer-value">${perc}%</span></div>
+                   <div class="progress-track"><div class="progress-fill" style="width:${perc}%; background: linear-gradient(90deg, var(--purple), var(--cyan));"></div></div>
+               </div>
+           `;
+           frag.appendChild(card);
+       });
+       container.appendChild(frag);
+   }
+
+   function abrirModalOcorrenciaGeral(causa) {
+       const porTecnico = (window.dadosOcorrenciasPorTecnico || {})[causa] || {};
+       const linhas = Object.entries(porTecnico).sort((a, b) => b[1] - a[1]);
+       const total = linhas.reduce((s, [, q]) => s + q, 0);
+
+       const labelTitulo = document.getElementById('modalTitulo');
+       const thead = document.getElementById('tabelaDetalhes').getElementsByTagName('thead')[0];
+       const tbody = document.getElementById('corpoTabelaDetalhes');
+
+       document.getElementById('btnExportarModal').style.display = 'none';
+       document.getElementById('btnExportarPDF').style.display = 'none';
+
+       labelTitulo.innerHTML = `Ocorrência: ${causa} <span id="modalCount" class="modal-badge-count">${total} registros.</span>`;
+       thead.innerHTML = `<tr>
+           <th>Leiturista</th>
+           <th class="td-center">Quantidade</th>
+           <th class="td-center">% do Total</th>
+       </tr>`;
+
+       if (linhas.length === 0) {
+           tbody.innerHTML = `<tr><td colspan="3"><div class="empty-message">Nenhum leiturista encontrado para essa ocorrência.</div></td></tr>`;
+       } else {
+           tbody.innerHTML = linhas.map(([nome, qtd]) => {
+               const perc = total > 0 ? ((qtd / total) * 100).toFixed(1) : 0;
+               return `<tr><td><b>${nome}</b></td><td class="td-center"><span class="occ-count">${qtd}</span></td><td class="td-center">${perc}%</td></tr>`;
+           }).join('');
+       }
+       document.getElementById('modalDetalhes').style.display = 'flex';
+   }
+
+   // ─── Modal de Ocorrências por Horário (clique no gráfico "Ocorrências por Horário da Leitura") ───
+   function abrirModalHora(horaLabel) {
+       const horaNum = String(horaLabel).replace('h', '');
+       let linhas = [];
+
+       for (let tec in dadosGlobaisTecnicos) {
+           (dadosGlobaisTecnicos[tec].linhasOcorrencias || []).forEach(linha => {
+               if (linha.hora && linha.hora !== "-" && linha.hora.split(':')[0] === horaNum) {
+                   linhas.push({ ...linha, tecnico: tec });
+               }
+           });
+       }
+
+       const labelTitulo = document.getElementById('modalTitulo');
+       const thead = document.getElementById('tabelaDetalhes').getElementsByTagName('thead')[0];
+       const tbody = document.getElementById('corpoTabelaDetalhes');
+
+       document.getElementById('btnExportarModal').style.display = 'none';
+       document.getElementById('btnExportarPDF').style.display = 'none';
+
+       labelTitulo.innerHTML = `Ocorrências às ${horaLabel} <span id="modalCount" class="modal-badge-count">${linhas.length} registros.</span>`;
+       thead.innerHTML = `<tr>
+           <th>Fornecimento</th>
+           <th>Endereço</th>
+           <th>Leiturista</th>
+           <th class="td-center">Hora</th>
+           <th class="td-center">CO1</th>
+           <th>Motivo / Causa</th>
+       </tr>`;
+
+       if (linhas.length === 0) {
+           tbody.innerHTML = `<tr><td colspan="6"><div class="empty-message">Nenhuma ocorrência registrada nesse horário.</div></td></tr>`;
+       } else {
+           tbody.innerHTML = linhas.map(linha => `
+               <tr>
+                   <td style="font-weight:700;font-family:'Space Mono',monospace;font-size:0.78rem;">${linha.codigo}</td>
+                   <td>${linha.endereco}</td>
+                   <td>${linha.tecnico}</td>
+                   <td class="td-center" style="font-family:'Space Mono',monospace;">${linha.hora}</td>
+                   <td class="td-center"><b>${linha.co1}</b></td>
+                   <td style="font-weight:700;color:var(--purple);">${linha.causa}</td>
+               </tr>
+           `).join('');
+       }
+       document.getElementById('modalDetalhes').style.display = 'flex';
+   }
+
+   function abrirModal(nomeTecnico, tipo) {
+       const tecnico = dadosGlobaisTecnicos[nomeTecnico];
+       if (!tecnico) return;
+
+       colunaOrdenadaModalAtual = -1; direcaoOrdenacaoModal = true; nomeTecnicoModalAtual = nomeTecnico; tipoModalAtual = tipo;
+       const labelTitulo = document.getElementById('modalTitulo'); const thead = document.getElementById('tabelaDetalhes').getElementsByTagName('thead')[0]; const tbody = document.getElementById('corpoTabelaDetalhes');
+
+       tbody.innerHTML = "";
+       document.getElementById('btnExportarModal').style.display = 'inline-block';
+       document.getElementById('btnExportarPDF').style.display = 'inline-block';
+
+       if (tipo === 'foramedia') {
+           labelTitulo.innerHTML = `Anomalias de Consumo: ${nomeTecnico} <span id="modalCount" class="modal-badge-count">${tecnico.linhasForaMedia.length} registros.</span>`;
+           thead.innerHTML = `<tr>
+               <th style="width:36px;text-align:center;"><input type="checkbox" id="chkSelectAll" onchange="toggleSelectAll(this)"></th>
+               <th onclick="ordenarColunaModal(1)" style="cursor:pointer;">Fornecimento ↕</th>
+               <th onclick="ordenarColunaModal(2)" style="cursor:pointer;">Endereço ↕</th>
+               <th onclick="ordenarColunaModal(3)" style="cursor:pointer;">Hidrômetro ↕</th>
+               <th onclick="ordenarColunaModal(4)" style="cursor:pointer;" class="td-center">Leit. Ant. ↕</th>
+               <th onclick="ordenarColunaModal(5)" style="cursor:pointer;" class="td-center">Leit. Atual ↕</th>
+               <th onclick="ordenarColunaModal(6)" style="cursor:pointer;" class="td-center">Consumo ↕</th>
+               <th onclick="ordenarColunaModal(7)" style="cursor:pointer;" class="td-center">Média ↕</th>
+               <th onclick="ordenarColunaModal(8)" style="cursor:pointer;" class="td-center">Analise ↕</th>
+               <th onclick="ordenarColunaModal(9)" style="cursor:pointer;" class="td-center">Valor Fat. ↕</th>
+               <th onclick="ordenarColunaModal(10)" style="cursor:pointer;">Causa Ocor. ↕</th>
+               <th onclick="ordenarColunaModal(11)" style="cursor:pointer;">Obs. ↕</th>
+               <th onclick="ordenarColunaModal(12)" style="cursor:pointer;" class="td-center">Retida ↕</th>
+           </tr>`;
+
+           if (tecnico.linhasForaMedia.length === 0) {
+               tbody.innerHTML = `<tr><td colspan="13"><div class="empty-message">Nenhum consumo anômalo.</div></td></tr>`;
+               document.getElementById('btnExportarModal').style.display = 'none'; document.getElementById('btnExportarPDF').style.display = 'none';
+           } else {
+               const frag = document.createDocumentFragment();
+               tecnico.linhasForaMedia.forEach(linha => {
+                   const tr = document.createElement('tr'); tr.style.cursor = 'pointer';
+                   const isRetida = (linha.faturaRetida.toLowerCase() === 'sim' || linha.faturaRetida.toLowerCase() === 's');
+                   
+                   let badgeDiag = '';
+                   if (linha.tipoAnomalia === 'QUEDA') {
+                       badgeDiag = `<span class="badge badge-info">QUEDA (Risco)</span>`;
+                   } else if (linha.tipoAnomalia === 'ESTOURO') {
+                       badgeDiag = `<span class="badge badge-danger">ESTOURO</span>`;
+                   } else if (linha.tipoAnomalia === 'DESVIO_MINIMO') {
+                       badgeDiag = `<span class="badge badge-warning">DESVIO</span>`;
+                   } else {
+                       badgeDiag = `<span class="badge badge-warning">DESVIO</span>`;
+                   }
+
+                   const isLeituraIgual = (linha.leitura !== "-" && linha.leitura !== "" && linha.leitura === linha.leituraAnterior);
+                   const estiloLeitura = isLeituraIgual ? 'color: var(--amber); font-weight: 800; background: rgba(249, 199, 79, 0.12);' : 'color: var(--muted);';
+                   const iconeAlerta = isLeituraIgual ? ' ⚠️' : '';
+                   
+                   const estiloEndereco = linha.categoriaUso.includes("PUBLICA") ? 'color: var(--amber); font-weight: bold;' : '';
+
+                   tr.innerHTML = `
+                       <td class="td-center" onclick="event.stopPropagation();"><input type="checkbox" class="chk-linha" onchange="sincronizarLinha(this)"></td>
+                       <td style="font-weight:700;font-family:'Space Mono',monospace;font-size:0.78rem;">${linha.codigo}</td>
+                       <td style="${estiloEndereco}">${linha.endereco}</td>
+                       <td style="font-family:'Space Mono',monospace;font-size:0.78rem;color:var(--muted);">${linha.hidrometro}</td>
+                       <td class="td-center" style="${estiloLeitura}">${linha.leituraAnterior}</td>
+                       <td class="td-center" style="${estiloLeitura}">${linha.leitura}${iconeAlerta}</td>
+                       <td class="td-center" style="font-weight:700;font-size:0.95rem;">${linha.consumo} m³</td>
+                       <td class="td-center" style="color:var(--muted);">${linha.media} m³</td>
+                       <td class="td-center" data-sort="${linha.tipoAnomalia}">${badgeDiag}</td>
+                       <td class="td-center" style="color:var(--green);font-weight:700;">R$ ${linha.valorFatura}</td>
+                       <td style="font-size:0.75rem;color:var(--purple);">${linha.causa}</td>
+                       <td style="font-size:0.75rem;color:var(--muted);">${linha.obs}</td>
+                       <td class="td-center" data-sort="${isRetida ? '1' : '0'}">${isRetida ? '<span class="badge badge-danger">SIM</span>' : '<span class="badge badge-neutral">NÃO</span>'}</td>`;
+                   frag.appendChild(tr);
+               });
+               tbody.appendChild(frag);
+           }
+       } else if (tipo === 'naoimp') {
+           labelTitulo.innerHTML = `Faturas Não Impressas: ${nomeTecnico} <span id="modalCount" class="modal-badge-count">${tecnico.linhasNaoImpressas.length} registros.</span>`;
+           thead.innerHTML = `<tr>
+               <th style="width:36px;text-align:center;"><input type="checkbox" id="chkSelectAll" onchange="toggleSelectAll(this)"></th>
+               <th onclick="ordenarColunaModal(1)" style="cursor:pointer;">Fornecimento ↕</th>
+               <th onclick="ordenarColunaModal(2)" style="cursor:pointer;">Endereço ↕</th>
+               <th onclick="ordenarColunaModal(3)" style="cursor:pointer;">Hidrômetro ↕</th>
+               <th onclick="ordenarColunaModal(4)" style="cursor:pointer;" class="td-center">Leitura ↕</th>
+               <th onclick="ordenarColunaModal(5)" style="cursor:pointer;">Causa Ocor. ↕</th>
+               <th onclick="ordenarColunaModal(6)" style="cursor:pointer;">Obs. ↕</th>
+           </tr>`;
+
+           if (tecnico.linhasNaoImpressas.length === 0) {
+               tbody.innerHTML = `<tr><td colspan="7"><div class="empty-message">Nenhuma fatura não impressa.</div></td></tr>`;
+               document.getElementById('btnExportarModal').style.display = 'none'; document.getElementById('btnExportarPDF').style.display = 'none';
+           } else {
+               const frag = document.createDocumentFragment();
+               tecnico.linhasNaoImpressas.forEach(linha => {
+                   const tr = document.createElement('tr'); tr.style.cursor = 'pointer';
+                   tr.innerHTML = `
+                       <td class="td-center" onclick="event.stopPropagation();"><input type="checkbox" class="chk-linha" onchange="sincronizarLinha(this)"></td>
+                       <td style="font-weight:700;font-family:'Space Mono',monospace;font-size:0.78rem;">${linha.codigo}</td>
+                       <td>${linha.endereco}</td>
+                       <td style="font-family:'Space Mono',monospace;font-size:0.78rem;color:var(--muted);">${linha.hidrometro}</td>
+                       <td class="td-center">${linha.leitura}</td>
+                       <td style="font-size:0.75rem;color:var(--purple);">${linha.causa}</td>
+                       <td style="font-size:0.75rem;color:var(--muted);">${linha.obs}</td>`;
+                   frag.appendChild(tr);
+               });
+               tbody.appendChild(frag);
+           }
+       } else {
+           labelTitulo.innerHTML = `Ocorrências da Tarefa: ${nomeTecnico} <span id="modalCount" class="modal-badge-count">${tecnico.linhasOcorrencias.length} registros.</span>`;
+           thead.innerHTML = `<tr>
+               <th style="width:36px;text-align:center;"><input type="checkbox" id="chkSelectAll" onchange="toggleSelectAll(this)"></th>
+               <th onclick="ordenarColunaModal(1)" style="cursor:pointer;">Fornecimento ↕</th>
+               <th onclick="ordenarColunaModal(2)" style="cursor:pointer;">Endereço ↕</th>
+               <th onclick="ordenarColunaModal(3)" style="cursor:pointer;">Hidrômetro ↕</th>
+               <th onclick="ordenarColunaModal(4)" style="cursor:pointer;" class="td-center">Hora ↕</th>
+               <th onclick="ordenarColunaModal(5)" style="cursor:pointer;" class="td-center">CO1 ↕</th>
+               <th onclick="ordenarColunaModal(6)" style="cursor:pointer;">Motivo / Causa ↕</th>
+               <th onclick="ordenarColunaModal(7)" style="cursor:pointer;">Obs. ↕</th>
+               <th onclick="ordenarColunaModal(8)" style="cursor:pointer;" class="td-center">Fotos ↕</th>
+               <th onclick="ordenarColunaModal(9)" style="cursor:pointer;" class="td-center">Impressa ↕</th>
+           </tr>`;
+
+           if (tecnico.linhasOcorrencias.length === 0) {
+               tbody.innerHTML = `<tr><td colspan="10"><div class="empty-message">Nenhuma ocorrência registrada.</div></td></tr>`;
+               document.getElementById('btnExportarModal').style.display = 'none'; document.getElementById('btnExportarPDF').style.display = 'none';
+           } else {
+               const frag = document.createDocumentFragment();
+               tecnico.linhasOcorrencias.forEach(linha => {
+                   const tr = document.createElement('tr'); tr.style.cursor = 'pointer';
+                   const isImp = linha.fatura.toLowerCase() === 'sim';
+                   
+                   const estiloEndereco = linha.categoriaUso.includes("PUBLICA") ? 'color: var(--amber); font-weight: bold;' : '';
+
+                   tr.innerHTML = `
+                       <td class="td-center" onclick="event.stopPropagation();"><input type="checkbox" class="chk-linha" onchange="sincronizarLinha(this)"></td>
+                       <td style="font-weight:700;font-family:'Space Mono',monospace;font-size:0.78rem;">${linha.codigo}</td>
+                       <td style="${estiloEndereco}">${linha.endereco}</td>
+                       <td style="font-family:'Space Mono',monospace;font-size:0.78rem;color:var(--muted);">${linha.hidrometro}</td>
+                       <td class="td-center" style="font-family:'Space Mono',monospace;font-size:0.78rem;">${linha.hora}</td>
+                       <td class="td-center"><b>${linha.co1}</b></td>
+                       <td style="font-weight:700;color:var(--purple);">${linha.causa}</td>
+                       <td style="font-size:0.75rem;color:var(--muted);">${linha.obs}</td>
+                       <td class="td-center" style="font-weight:700;color:var(--blue);">${linha.fotos}</td>
+                       <td class="td-center" data-sort="${linha.fatura}">${isImp ? '<span class="badge badge-success">SIM</span>' : '<span class="badge badge-danger">NÃO</span>'}</td>`;
+                   frag.appendChild(tr);
+               });
+               tbody.appendChild(frag);
+           }
+       }
+       document.getElementById('modalDetalhes').style.display = 'flex';
+   }
+
+   // =========================================================
+   // --- SESSÃO DE INTEGRAÇÃO COM O SERVIDOR E FECHAMENTO ---
+   // =========================================================
+
+   function fecharModal() { document.getElementById('modalDetalhes').style.display = 'none'; }
+   document.getElementById('modalDetalhes').addEventListener('click', function(e) { if (e.target === this) fecharModal(); });
+
+   // ─── Seleção de linhas no modal ───
+   function toggleSelectAll(checkboxTopo) {
+       const marcado = checkboxTopo.checked;
+       document.querySelectorAll('#corpoTabelaDetalhes .chk-linha').forEach(chk => { chk.checked = marcado; });
+   }
+
+   function sincronizarLinha() {
+       const todas = document.querySelectorAll('#corpoTabelaDetalhes .chk-linha');
+       const marcadas = document.querySelectorAll('#corpoTabelaDetalhes .chk-linha:checked');
+       const chkTopo = document.getElementById('chkSelectAll');
+       if (chkTopo) {
+           chkTopo.checked = todas.length > 0 && marcadas.length === todas.length;
+           chkTopo.indeterminate = marcadas.length > 0 && marcadas.length < todas.length;
+       }
+   }
+
+   // ─── Ordenação de colunas no modal ───
+   function ordenarColunaModal(indiceColuna) {
+       const tbody = document.getElementById('corpoTabelaDetalhes');
+       const linhas = Array.from(tbody.querySelectorAll('tr'));
+       if (linhas.length === 0 || !linhas[0].querySelectorAll('td')[indiceColuna]) return;
+
+       if (colunaOrdenadaModalAtual === indiceColuna) {
+           direcaoOrdenacaoModal = !direcaoOrdenacaoModal;
+       } else {
+           colunaOrdenadaModalAtual = indiceColuna;
+           direcaoOrdenacaoModal = true;
+       }
+
+       const pegarValor = (tr) => {
+           const td = tr.querySelectorAll('td')[indiceColuna];
+           if (!td) return '';
+           if (td.hasAttribute('data-sort')) return td.getAttribute('data-sort');
+           return td.textContent.trim();
+       };
+
+       linhas.sort((a, b) => {
+           const va = pegarValor(a), vb = pegarValor(b);
+           const na = parseFloat(String(va).replace(/\./g, '').replace(',', '.').replace(/[^\d\-.]/g, ''));
+           const nb = parseFloat(String(vb).replace(/\./g, '').replace(',', '.').replace(/[^\d\-.]/g, ''));
+           let cmp;
+           if (va !== '' && vb !== '' && !isNaN(na) && !isNaN(nb)) {
+               cmp = na - nb;
+           } else {
+               cmp = String(va).localeCompare(String(vb), 'pt-BR', { numeric: true, sensitivity: 'base' });
+           }
+           return direcaoOrdenacaoModal ? cmp : -cmp;
+       });
+
+       linhas.forEach(tr => tbody.appendChild(tr));
+   }
+
+   // ─── Exportação do Modal (Excel) ───
+   // ─── Retorna as linhas selecionadas (via checkbox) do modal; se nenhuma estiver marcada, retorna todas ───
+   function obterLinhasParaExportar() {
+       const tbody = document.getElementById('corpoTabelaDetalhes');
+       const todasLinhas = Array.from(tbody.querySelectorAll('tr')).filter(tr => tr.querySelectorAll('td').length > 1);
+       const selecionadas = todasLinhas.filter(tr => {
+           const chk = tr.querySelector('.chk-linha');
+           return chk && chk.checked;
+       });
+       return selecionadas.length > 0 ? selecionadas : todasLinhas;
+   }
+
+   function exportarDadosModal() {
+       const table = document.getElementById('tabelaDetalhes');
+       if (!table) return;
+
+       const headerCells = Array.from(table.querySelectorAll('thead th')).slice(1).map(th => th.textContent.replace('↕', '').trim());
+       const wsData = [headerCells];
+
+       obterLinhasParaExportar().forEach(tr => {
+           const cells = Array.from(tr.querySelectorAll('td'));
+           wsData.push(cells.slice(1).map(td => td.textContent.trim()));
+       });
+
+       if (wsData.length <= 1) { alert('Não há dados para exportar.'); return; }
+
+       const ws = XLSX.utils.aoa_to_sheet(wsData);
+       const wb = XLSX.utils.book_new();
+       XLSX.utils.book_append_sheet(wb, ws, "Detalhamento");
+
+       const baseNome = (nomeTecnicoModalAtual || 'dados').replace(/[^a-zA-Z0-9]/g, '_');
+       XLSX.writeFile(wb, `${baseNome}_${tipoModalAtual || 'export'}.xlsx`);
+   }
+
+   // ─── Exportação do Modal (PDF) ───
+   function exportarPDFModal() {
+       const { jsPDF } = window.jspdf;
+       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
+
+       const table = document.getElementById('tabelaDetalhes');
+       const headerCells = Array.from(table.querySelectorAll('thead th')).slice(1).map(th => th.textContent.replace('↕', '').trim());
+
+       const rows = obterLinhasParaExportar().map(tr =>
+           Array.from(tr.querySelectorAll('td')).slice(1).map(td => td.textContent.trim())
+       );
+
+       if (rows.length === 0) { alert('Não há dados para exportar.'); return; }
+
+       doc.setFontSize(12);
+       doc.text(`Detalhamento: ${nomeTecnicoModalAtual || ''}`, 20, 24);
+
+       doc.autoTable({
+           head: [headerCells],
+           body: rows,
+           startY: 34,
+           styles: { fontSize: 7, cellPadding: 3 },
+           headStyles: { fillColor: [79, 156, 249], textColor: 255 },
+           theme: 'grid'
+       });
+
+       const baseNome = (nomeTecnicoModalAtual || 'dados').replace(/[^a-zA-Z0-9]/g, '_');
+       doc.save(`${baseNome}_${tipoModalAtual || 'export'}.pdf`);
+   }
+
+   // =========================================================
+   // --- EXPORTAÇÃO DOS 4 CARDS PRINCIPAIS (planilha formatada) ---
+   // Funciona tanto no painel intermediário (upload da hora) quanto no
+   // painel somado/final (Consulta Servidor), pois ambos populam
+   // dadosGlobaisTecnicos da mesma forma.
+   // =========================================================
+
+   function dataArquivoAtual() {
+       const agora = new Date();
+       const pad = n => String(n).padStart(2, '0');
+       return `${agora.getFullYear()}${pad(agora.getMonth()+1)}${pad(agora.getDate())}_${pad(agora.getHours())}${pad(agora.getMinutes())}`;
+   }
+
+   function coletarLinhasTodosTecnicos(campo) {
+       let linhas = [];
+       for (let tec in dadosGlobaisTecnicos) {
+           (dadosGlobaisTecnicos[tec][campo] || []).forEach(l => linhas.push(Object.assign({ leiturista: tec }, l)));
+       }
+       return linhas;
+   }
+
+   // Gera e baixa uma planilha .xlsx já formatada (cabeçalho em negrito, colunas com largura ajustada)
+   function baixarPlanilhaFormatada(nomeArquivo, nomeAba, colunas, linhas) {
+       if (!linhas || linhas.length === 0) { alert('Não há dados carregados no painel para exportar.'); return; }
+
+       const wsData = [colunas.map(c => c.label)];
+       linhas.forEach(obj => wsData.push(colunas.map(c => {
+           const v = obj[c.key];
+           return (v === undefined || v === null || v === "") ? "-" : v;
+       })));
+
+       const ws = XLSX.utils.aoa_to_sheet(wsData);
+       ws['!cols'] = colunas.map(c => ({ wch: c.wch || 18 }));
+
+       // Cabeçalho em negrito
+       const headerRange = XLSX.utils.decode_range(ws['!ref']);
+       for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
+           const addr = XLSX.utils.encode_cell({ r: 0, c: c });
+           if (ws[addr]) ws[addr].s = { font: { bold: true } };
+       }
+
+       const wb = XLSX.utils.book_new();
+       XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+       XLSX.writeFile(wb, nomeArquivo);
+   }
+
+   function exportarCardAtivos() {
+       const linhas = Object.keys(dadosGlobaisTecnicos).map(nome => {
+           const t = dadosGlobaisTecnicos[nome];
+           return {
+               leiturista: nome, atc: t.atc || '-', cidade: t.cidade || '-', grupo: t.grupo || '-',
+               leiturasAtivas: t.leiturasAtivas || 0, leiturasTotal: t.leiturasTotal || 0,
+               ocorrenciasAtivas: t.ocorrenciasAtivas || 0, foraDaMediaCount: t.foraDaMediaCount || 0,
+               faturasNao: t.faturasNao || 0, comunicados: t.comunicados || 0
+           };
+       });
+       baixarPlanilhaFormatada(`fornecimentos_lidos_${dataArquivoAtual()}.xlsx`, 'Fornecimentos Lidos', [
+           { key: 'leiturista', label: 'Leiturista', wch: 26 },
+           { key: 'atc', label: 'ATC', wch: 10 },
+           { key: 'cidade', label: 'Cidade', wch: 20 },
+           { key: 'grupo', label: 'Grupo', wch: 10 },
+           { key: 'leiturasAtivas', label: 'Leituras Ativas', wch: 15 },
+           { key: 'leiturasTotal', label: 'Leituras Total', wch: 15 },
+           { key: 'ocorrenciasAtivas', label: 'Ocorrências', wch: 14 },
+           { key: 'foraDaMediaCount', label: 'Fora da Média', wch: 14 },
+           { key: 'faturasNao', label: 'Faturas Não Impressas', wch: 18 },
+           { key: 'comunicados', label: 'Comunicados', wch: 14 }
+       ], linhas);
+   }
+
+   function exportarCardOcorrencias() {
+       const linhas = coletarLinhasTodosTecnicos('linhasOcorrencias');
+       baixarPlanilhaFormatada(`ocorrencias_${dataArquivoAtual()}.xlsx`, 'Ocorrências', [
+           { key: 'leiturista', label: 'Leiturista', wch: 26 },
+           { key: 'codigo', label: 'Fornecimento', wch: 14 },
+           { key: 'endereco', label: 'Endereço', wch: 34 },
+           { key: 'hidrometro', label: 'Hidrômetro', wch: 14 },
+           { key: 'hora', label: 'Hora', wch: 10 },
+           { key: 'co1', label: 'CO1', wch: 10 },
+           { key: 'causa', label: 'Motivo / Causa', wch: 26 },
+           { key: 'obs', label: 'Obs.', wch: 26 },
+           { key: 'fatura', label: 'Impressa', wch: 10 }
+       ], linhas);
+   }
+
+   function exportarCardRiscos() {
+       const linhas = coletarLinhasTodosTecnicos('linhasForaMedia').filter(l => l.tipoAnomalia !== 'ESTOURO');
+       baixarPlanilhaFormatada(`quedas_suspeitas_risco_${dataArquivoAtual()}.xlsx`, 'Quedas Suspeitas', [
+           { key: 'leiturista', label: 'Leiturista', wch: 26 },
+           { key: 'codigo', label: 'Fornecimento', wch: 14 },
+           { key: 'endereco', label: 'Endereço', wch: 34 },
+           { key: 'hidrometro', label: 'Hidrômetro', wch: 14 },
+           { key: 'leituraAnterior', label: 'Leit. Anterior', wch: 13 },
+           { key: 'leitura', label: 'Leit. Atual', wch: 13 },
+           { key: 'consumo', label: 'Consumo', wch: 10 },
+           { key: 'media', label: 'Média', wch: 10 },
+           { key: 'valorFatura', label: 'Valor Fatura', wch: 13 },
+           { key: 'causa', label: 'Causa Ocor.', wch: 22 },
+           { key: 'obs', label: 'Obs.', wch: 22 },
+           { key: 'faturaRetida', label: 'Retida', wch: 10 }
+       ], linhas);
+   }
+
+   function exportarCardEstouros() {
+       const linhas = coletarLinhasTodosTecnicos('linhasForaMedia').filter(l => l.tipoAnomalia === 'ESTOURO');
+       baixarPlanilhaFormatada(`estouros_consumo_${dataArquivoAtual()}.xlsx`, 'Estouros de Consumo', [
+           { key: 'leiturista', label: 'Leiturista', wch: 26 },
+           { key: 'codigo', label: 'Fornecimento', wch: 14 },
+           { key: 'endereco', label: 'Endereço', wch: 34 },
+           { key: 'hidrometro', label: 'Hidrômetro', wch: 14 },
+           { key: 'leituraAnterior', label: 'Leit. Anterior', wch: 13 },
+           { key: 'leitura', label: 'Leit. Atual', wch: 13 },
+           { key: 'consumo', label: 'Consumo', wch: 10 },
+           { key: 'media', label: 'Média', wch: 10 },
+           { key: 'valorFatura', label: 'Valor Fatura', wch: 13 },
+           { key: 'causa', label: 'Causa Ocor.', wch: 22 },
+           { key: 'obs', label: 'Obs.', wch: 22 },
+           { key: 'faturaRetida', label: 'Retida', wch: 10 }
+       ], linhas);
+   }
+
+   function extrairDadosDaTarefa(tarefaRaw) {
+       if (!tarefaRaw) return { grupo: "-", atc: "-", cidade: "-", tarefa: "-", setor: "-" };
+       const regex = /T(\d+)G(\d+)S(\d+)ATC(\d+)\s*(.*)/i;
+       const match = String(tarefaRaw).match(regex);
+       if (match) {
+           return {
+               tarefa: match[1],
+               grupo: match[2],
+               setor: match[3],
+               atc: match[4],
+               cidade: match[5].trim()
+           };
+       }
+       return { grupo: "-", atc: "-", cidade: "-", tarefa: "-", setor: "-" }; 
+   }
+
+  function enviarParaServidor() {
+    if (!payloadAuditoriaDia) return;
+
+    const btn = document.getElementById('btnSync');
+    btn.innerHTML = `<span class="loader" style="border-top-color: #fff;"></span> Sincronizando...`;
+    btn.style.pointerEvents = 'none';
+
+    // Chave Anon do seu arquivo .env do Docker
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE3ODM2NDg0NzAsImV4cCI6MjA5OTAwODQ3MH0.M1suC6hPN0Tjs8LfpGSgmonUBxy0larehPbQGSEyXVg'; 
+    const endpoint = window.location.origin + '/api-painel/rest/v1/auditorias';
+    const dadosParaBanco = {
+        data_auditoria: payloadAuditoriaDia.dataAuditoria,
+        atc: payloadAuditoriaDia.atc,
+        cidade: payloadAuditoriaDia.cidade,
+        grupo: payloadAuditoriaDia.grupo,
+        resumo: payloadAuditoriaDia.resumo,
+        anomalias: payloadAuditoriaDia.anomalias,
+        dados_completos: payloadAuditoriaDia.dados_completos
+    };
+
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(dadosParaBanco)
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => { throw new Error(text || 'Erro ao salvar no Supabase'); });
+        }
+        alert('Dados salvos com sucesso no servidor local!');
+        carregarHistoricoDoServidor();
+    })
+    .catch(error => {
+        console.error('Erro ao enviar:', error);
+        alert('Falha ao salvar no servidor: ' + error.message);
+    })
+    .finally(() => {
+        btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Sincronizar com Servidor`;
+        btn.style.pointerEvents = 'auto';
+    });
+}
+
+   // --- LÓGICA DA NOVA ABA DE CONSULTA ---
+
+   // Chave Anon e endpoint base reutilizados por todas as chamadas ao Supabase do painel
+   const SUPABASE_KEY_PAINEL = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlLWRlbW8iLCJpYXQiOjE3ODM2NDg0NzAsImV4cCI6MjA5OTAwODQ3MH0.M1suC6hPN0Tjs8LfpGSgmonUBxy0larehPbQGSEyXVg';
+   const AUDITORIAS_ENDPOINT = window.location.origin + '/api-painel/rest/v1/auditorias';
+
+   function headersSupabasePainel() {
+       return {
+           'apikey': SUPABASE_KEY_PAINEL,
+           'Authorization': `Bearer ${SUPABASE_KEY_PAINEL}`,
+           'Content-Type': 'application/json'
+       };
+   }
+
+   // Define Data Início/Fim como hoje por padrão, pra já abrir a aba de Consulta
+   // pronta pra montar o relatório final do dia (o usuário sobe os uploads da
+   // hora o dia inteiro e, no fim do dia, entra aqui já filtrado em "hoje").
+   function definirDataHojeComoPadrao() {
+       const hojeISO = new Date().toISOString().split('T')[0];
+       const campoInicio = document.getElementById('filtroDataInicio');
+       const campoFim = document.getElementById('filtroDataFim');
+       if (campoInicio && !campoInicio.value) campoInicio.value = hojeISO;
+       if (campoFim && !campoFim.value) campoFim.value = hojeISO;
+   }
+
+   function buscarHistoricoServidor(event) {
+       definirDataHojeComoPadrao();
+       const btn = (event && event.target) ? event.target.closest('button') : document.querySelector('#tab-consulta .btn-sync');
+       const txtOriginal = btn ? btn.innerHTML : '';
+       if (btn) {
+           btn.innerHTML = '⏳ Buscando...';
+           btn.style.pointerEvents = 'none';
+       }
+
+       // Não busca mais "dados_completos" aqui (JSON pesado, por técnico) — isso é
+       // carregado sob demanda em carregarPainelUnico() e carregarPainelConsulta(),
+       // evitando o timeout ao listar o histórico inteiro.
+       const dataInicio = document.getElementById('filtroDataInicio').value;
+       const dataFim = document.getElementById('filtroDataFim').value;
+       const temFiltroData = !!(dataInicio || dataFim);
+
+       let url = AUDITORIAS_ENDPOINT + '?select=id,data_auditoria,atc,cidade,grupo,resumo,created_at&order=created_at.desc';
+       if (dataInicio) url += `&data_auditoria=gte.${dataInicio}`;
+       if (dataFim) url += `&data_auditoria=lte.${dataFim}`;
+       // Sem filtro de data: mostra só os 3 painéis mais recentes, pra não poluir
+       // a tela ao entrar na aba. Com filtro de data ativo, mostra tudo que bater.
+       if (!temFiltroData) url += '&limit=3';
+
+       fetch(url, {
+           method: 'GET',
+           headers: headersSupabasePainel()
+       })
+       .then(response => {
+           if (!response.ok) {
+               return response.text().then(text => {
+                   console.error('Status:', response.status, '| Corpo da resposta:', text);
+                   throw new Error(`Erro ao buscar dados do Supabase (status ${response.status}): ${text}`);
+               });
+           }
+           return response.json(); 
+       })
+       .then(dados => {
+           if (btn) { btn.innerHTML = txtOriginal; btn.style.pointerEvents = 'auto'; }
+
+           // Guarda o resultado bruto (não filtrado por Cidade/Grupo) — os selects
+           // de filtro abaixo trabalham em cima dele, sem precisar buscar de novo.
+           window._todosRegistrosServidor = dados;
+           window._temFiltroDataConsulta = temFiltroData;
+
+           popularFiltrosCidadeGrupo(dados);
+           document.getElementById('filtroCidadeConsulta').value = '';
+           document.getElementById('filtroGrupoConsulta').value = '';
+
+           renderizarTabelaConsulta(dados, temFiltroData);
+       })
+       .catch(error => {
+           console.error('Erro na consulta:', error);
+           if (btn) {
+               btn.innerHTML = `❌ Falha na Busca`;
+               btn.style.background = 'var(--red)';
+               setTimeout(() => {
+                   btn.innerHTML = txtOriginal;
+                   btn.style.background = 'transparent';
+                   btn.style.pointerEvents = 'auto';
+               }, 3000);
+           }
+       });
+   }
+
+   // Preenche os <select> de Cidade e Grupo com os valores únicos encontrados
+   // no período buscado, pra dar pra separar cada uma das cidades/grupos que
+   // usam este painel em vez de somar tudo junto.
+   function popularFiltrosCidadeGrupo(registros) {
+       const selCidade = document.getElementById('filtroCidadeConsulta');
+       const selGrupo = document.getElementById('filtroGrupoConsulta');
+       const valorCidadeAtual = selCidade.value;
+       const valorGrupoAtual = selGrupo.value;
+
+       const cidades = new Set();
+       const grupos = new Set();
+       registros.forEach(r => {
+           String(r.cidade || "").split(',').map(v => v.trim()).filter(Boolean).forEach(c => cidades.add(c));
+           if (r.grupo) grupos.add(String(r.grupo).trim());
+       });
+
+       selCidade.innerHTML = '<option value="">Todas as cidades</option>' +
+           Array.from(cidades).sort().map(c => `<option value="${c}">${c}</option>`).join('');
+       selGrupo.innerHTML = '<option value="">Todos os grupos</option>' +
+           Array.from(grupos).sort().map(g => `<option value="${g}">Grupo ${g}</option>`).join('');
+
+       if (cidades.has(valorCidadeAtual)) selCidade.value = valorCidadeAtual;
+       if (grupos.has(valorGrupoAtual)) selGrupo.value = valorGrupoAtual;
+   }
+
+   // Aplica os filtros de Cidade/Grupo em cima dos dados já buscados (sem nova
+   // chamada ao servidor) e re-renderiza a tabela — é assim que se isola o
+   // relatório final de UMA cidade/grupo específico em vez de tudo somado.
+   function aplicarFiltrosConsulta() {
+       const todos = window._todosRegistrosServidor || [];
+       const cidadeSel = document.getElementById('filtroCidadeConsulta').value;
+       const grupoSel = document.getElementById('filtroGrupoConsulta').value;
+
+       const filtrados = todos.filter(r => {
+           const okCidade = !cidadeSel || String(r.cidade || "").split(',').map(v => v.trim()).includes(cidadeSel);
+           const okGrupo = !grupoSel || String(r.grupo || "").trim() === grupoSel;
+           return okCidade && okGrupo;
+       });
+
+       // Mudou o escopo: qualquer painel somado calculado antes não vale mais.
+       window.dadosConsultaSomados = null;
+
+       renderizarTabelaConsulta(filtrados, window._temFiltroDataConsulta, { cidade: cidadeSel, grupo: grupoSel });
+   }
+
+   function renderizarTabelaConsulta(dados, temFiltroData, filtroAtivo) {
+       const tbody = document.getElementById('corpoConsultaServidor');
+       const painelAcoes = document.getElementById('acoesConsulta');
+       const infoFiltro = document.getElementById('infoFiltroConsulta');
+
+       filtroAtivo = filtroAtivo || {};
+       const descFiltro = [filtroAtivo.cidade, filtroAtivo.grupo ? `Grupo ${filtroAtivo.grupo}` : ''].filter(Boolean).join(' · ');
+       infoFiltro.textContent = descFiltro ? `Filtro ativo: ${descFiltro}` : '';
+
+       if (dados.length === 0) {
+           tbody.innerHTML = descFiltro
+               ? `<tr><td colspan="8" class="empty-message">Nenhum registro para ${descFiltro} nesse período.</td></tr>`
+               : (temFiltroData
+                   ? `<tr><td colspan="8" class="empty-message">Nenhum dado encontrado no servidor para esse período.</td></tr>`
+                   : `<tr><td colspan="8" class="empty-message">Nenhum dado encontrado no servidor. Que tal subir um arquivo e clicar em "Salvar Resumo no Servidor"?</td></tr>`);
+           painelAcoes.style.display = 'none';
+           return;
+       }
+
+       tbody.innerHTML = '';
+
+       // Totais somados vêm direto de "resumo" (leve, já retornado na listagem).
+       // O detalhamento por técnico (painelSomado) é pesado e agora só é buscado
+       // sob demanda em carregarPainelConsulta(), quando o usuário clica no botão.
+       let totaisSomados = { ativos: 0, ocorrencias: 0, riscos: 0, estouros: 0, comunicados: 0 };
+       window.registrosSalvos = dados;
+
+       dados.forEach((registro, index) => {
+           const tr = document.createElement('tr');
+           tr.innerHTML = `
+               <td style="font-family:'Space Mono', monospace; font-weight:700; color:var(--cyan);">${registro.data_auditoria}</td>
+               <td>${formatarListaCompacta(registro.atc)}</td>
+               <td>${formatarListaCompacta(registro.cidade)}</td>
+               <td><span class="badge badge-info">G${registro.grupo}</span></td>
+               <td>${registro.resumo.ativos}</td>
+               <td>${registro.resumo.ocorrencias}</td>
+               <td><span style="color:var(--amber); font-weight:bold;">${registro.resumo.riscos}</span></td>
+               <td class="td-center">
+                   <button class="btn-filter" style="padding: 4px 10px; background: var(--blue); color: #fff; cursor: pointer;" 
+                           onclick="carregarPainelUnico(${index})">Abrir Painel</button>
+               </td>
+           `;
+           tbody.appendChild(tr);
+
+           totaisSomados.ativos += registro.resumo?.ativos || 0;
+           totaisSomados.ocorrencias += registro.resumo?.ocorrencias || 0;
+           totaisSomados.riscos += registro.resumo?.riscos || 0;
+           totaisSomados.estouros += registro.resumo?.estouros || 0;
+           totaisSomados.comunicados += registro.resumo?.comunicados || 0;
+       });
+
+       // Limpa qualquer painel somado de uma busca/filtro anterior — será recalculado
+       // sob demanda (com os dados_completos buscados na hora) ao clicar no botão.
+       window.dadosConsultaSomados = null;
+       window.totaisConsultaSomados = totaisSomados;
+       window._filtroConsultaAtual = filtroAtivo;
+
+       painelAcoes.style.display = 'flex';
+       document.getElementById('resumoConsulta').innerText = descFiltro
+           ? `${dados.length} registro(s) somados para ${descFiltro}.`
+           : (temFiltroData
+               ? `Encontrados ${dados.length} registros no período. Use os filtros de Cidade/Grupo acima para isolar o relatório final de cada uma.`
+               : `Mostrando os ${dados.length} painéis mais recentes. Use os filtros de data acima pra ver mais.`);
+   }
+   
+   function renderizarPainelAPartirDeDados(dadosTecnicos, totais) {
+       dadosGlobaisTecnicos = dadosTecnicos;
+
+       // Guarda uma cópia intacta (não filtrada) para poder reaplicar o filtro de ATC/Cidade
+       // a qualquer momento sem perder dados, já que esses painéis vêm do banco de dados
+       // (não de uma planilha) e não passam por reprocessarDados()/linhasCruas.
+       window.dadosGlobaisTecnicosOriginal = JSON.parse(JSON.stringify(dadosTecnicos));
+       window.totaisOriginalDB = { ...totais };
+       gerarFiltrosATCDeGlobais();
+
+       animarContador(document.getElementById('countAtivo'), totais.ativos);
+       animarContador(document.getElementById('countOcorrencia'), totais.ocorrencias);
+       animarContador(document.getElementById('countRisco'), totais.riscos);
+       animarContador(document.getElementById('countEstouro'), totais.estouros);
+       animarContador(document.getElementById('countComunicados'), totais.comunicados || 0);
+
+       const perc = totais.ativos > 0 ? ((totais.ocorrencias / totais.ativos) * 100).toFixed(1) : 0;
+       document.getElementById('percentOcorrencia').textContent = `${perc}% das Leituras`;
+
+       let contagemGeralRebuild = {};
+       let contagemHorasRebuild = {};
+
+       for (let tec in dadosGlobaisTecnicos) {
+            for (let occ in dadosGlobaisTecnicos[tec].listaOcorr) {
+                 contagemGeralRebuild[occ] = (contagemGeralRebuild[occ] || 0) + dadosGlobaisTecnicos[tec].listaOcorr[occ];
+            }
+
+            (dadosGlobaisTecnicos[tec].linhasOcorrencias || []).forEach(linha => {
+                 if (linha.hora && linha.hora !== "-") {
+                      const horaTratada = linha.hora.split(':')[0];
+                      if (!isNaN(horaTratada) && horaTratada !== "") {
+                          const labelHora = horaTratada + "h";
+                          contagemHorasRebuild[labelHora] = (contagemHorasRebuild[labelHora] || 0) + 1;
+                      }
+                 }
+            });
+       }
+
+       document.getElementById('filterContainer').style.display = 'flex';
+       document.getElementById('searchContainer').style.display = 'flex';
+       document.getElementById('boxGraficos').style.display = 'flex';
+
+       atualizarGraficos(contagemGeralRebuild, contagemHorasRebuild);
+       renderizarGrade('nome');
+       renderizarPainelOcorrenciasGeral();
+       mudarAba('dashboard');
+   }
+
+   // ─── Filtro ATC/Cidade para painéis carregados do banco de dados ───
+   // O ATC/Cidade de cada técnico é gravado direto em dadosGlobaisTecnicos[tec].atc / .cidade
+   // (ver bloco "PREPARAÇÃO DO PAYLOAD PARA O SERVIDOR"), então o filtro por ATC filtra
+   // técnicos inteiros — isso permite recalcular corretamente até os totais de "Ativos".
+   function gerarFiltrosATCDeGlobais() {
+       const atcContainer = document.getElementById('atcContainer');
+       const origem = window.dadosGlobaisTecnicosOriginal || {};
+       const combosUnicos = new Map(); // chave "atc||cidade" -> label exibido
+
+       for (let tec in origem) {
+           const atc = origem[tec].atc;
+           const cidade = origem[tec].cidade;
+           if (atc && atc !== "-") {
+               const chave = `${atc}||${cidade || "-"}`;
+               combosUnicos.set(chave, (cidade && cidade !== "-") ? `${atc} · ${cidade}` : atc);
+           }
+       }
+
+       if (combosUnicos.size <= 1) { atcContainer.innerHTML = ''; atcContainer.style.display = 'none'; return; }
+
+       let html = '<span style="font-size:0.78rem;font-weight:700;color:var(--muted);">Filtrar Cidades/ATC:</span>';
+       [...combosUnicos.entries()].sort((a, b) => a[1].localeCompare(b[1])).forEach(([chave, label]) => {
+           html += `<label class="toggle-container"><input type="checkbox" class="chk-atc-db" value="${chave}" checked onchange="aplicarFiltroATCGlobais()"><span class="toggle-label" style="font-size:0.8rem;">${label}</span></label>`;
+       });
+       atcContainer.innerHTML = html;
+       atcContainer.style.display = 'flex';
+   }
+
+   function aplicarFiltroATCGlobais() {
+       const origem = window.dadosGlobaisTecnicosOriginal;
+       if (!origem) return;
+
+       const chks = document.querySelectorAll('.chk-atc-db');
+       const selecionados = new Set(Array.from(chks).filter(c => c.checked).map(c => c.value));
+
+       const filtrado = {};
+       let totaisAjustados = { ativos: 0, ocorrencias: 0, riscos: 0, estouros: 0, comunicados: 0 };
+
+       for (let tec in origem) {
+           const d = origem[tec];
+           const chave = (d.atc && d.atc !== "-") ? `${d.atc}||${d.cidade || "-"}` : null;
+           const incluir = !chave || selecionados.has(chave); // sem ATC gravado: não dá pra filtrar, sempre inclui
+
+           if (incluir) {
+               filtrado[tec] = d;
+               totaisAjustados.ativos += d.leiturasAtivas || 0;
+               totaisAjustados.ocorrencias += d.ocorrenciasAtivas || 0;
+               totaisAjustados.comunicados += d.comunicados || 0;
+               (d.linhasForaMedia || []).forEach(l => {
+                   if (l.tipoAnomalia === 'ESTOURO') totaisAjustados.estouros++;
+                   else totaisAjustados.riscos++;
+               });
+           }
+       }
+
+       dadosGlobaisTecnicos = filtrado;
+
+       animarContador(document.getElementById('countAtivo'), totaisAjustados.ativos);
+       animarContador(document.getElementById('countOcorrencia'), totaisAjustados.ocorrencias);
+       animarContador(document.getElementById('countRisco'), totaisAjustados.riscos);
+       animarContador(document.getElementById('countEstouro'), totaisAjustados.estouros);
+       animarContador(document.getElementById('countComunicados'), totaisAjustados.comunicados);
+       const perc = totaisAjustados.ativos > 0 ? ((totaisAjustados.ocorrencias / totaisAjustados.ativos) * 100).toFixed(1) : 0;
+       document.getElementById('percentOcorrencia').textContent = `${perc}% das Leituras`;
+
+       let contagemGeralRebuild = {}, contagemHorasRebuild = {};
+       for (let tec in dadosGlobaisTecnicos) {
+           for (let occ in dadosGlobaisTecnicos[tec].listaOcorr) {
+               contagemGeralRebuild[occ] = (contagemGeralRebuild[occ] || 0) + dadosGlobaisTecnicos[tec].listaOcorr[occ];
+           }
+           (dadosGlobaisTecnicos[tec].linhasOcorrencias || []).forEach(linha => {
+               if (linha.hora && linha.hora !== "-") {
+                   const horaTratada = linha.hora.split(':')[0];
+                   if (!isNaN(horaTratada) && horaTratada !== "") {
+                       const labelHora = horaTratada + "h";
+                       contagemHorasRebuild[labelHora] = (contagemHorasRebuild[labelHora] || 0) + 1;
+                   }
+               }
+           });
+       }
+
+       atualizarGraficos(contagemGeralRebuild, contagemHorasRebuild);
+       renderizarGrade('nome');
+       renderizarPainelOcorrenciasGeral();
+   }
+
+   // Encurta listas longas separadas por vírgula (ex: vários ATCs num mesmo registro),
+   // mostrando só os 2 primeiros + um badge "+N" com a lista completa no tooltip (title).
+   function formatarListaCompacta(valor, maxItens = 2) {
+       if (!valor || valor === "-") return "-";
+       const itens = String(valor).split(',').map(v => v.trim()).filter(Boolean);
+       if (itens.length <= maxItens) return `<b>${itens.join(', ')}</b>`;
+       const visiveis = itens.slice(0, maxItens).join(', ');
+       const restantes = itens.length - maxItens;
+       const tituloCompleto = itens.join(', ').replace(/"/g, '&quot;');
+       return `<b>${visiveis}</b> <span title="${tituloCompleto}" style="background:var(--bg2, rgba(255,255,255,0.08)); border:1px solid var(--border); border-radius:10px; padding:1px 8px; font-size:0.75rem; font-weight:700; cursor:help; white-space:nowrap;">+${restantes}</span>`;
+   }
+
+   function carregarPainelConsulta(aposCarregar) {
+       // Já calculado nesta sessão? Usa direto, sem buscar de novo.
+       if (window.dadosConsultaSomados) {
+           renderizarPainelAPartirDeDados(window.dadosConsultaSomados, window.totaisConsultaSomados);
+           if (typeof aposCarregar === 'function') aposCarregar();
+           return;
+       }
+
+       const registros = window.registrosSalvos || [];
+       if (registros.length === 0) return;
+
+       const btn = document.querySelector('#acoesConsulta .btn-sync');
+       const txtOriginal = btn ? btn.innerHTML : '';
+       if (btn) { btn.innerHTML = '⏳ Carregando...'; btn.style.pointerEvents = 'none'; }
+
+       // Busca dados_completos só dos ids listados, em uma única chamada (?id=in.(...))
+       const ids = registros.map(r => r.id).join(',');
+       const url = AUDITORIAS_ENDPOINT + `?select=id,dados_completos&id=in.(${ids})`;
+
+       fetch(url, { method: 'GET', headers: headersSupabasePainel() })
+           .then(response => {
+               if (!response.ok) {
+                   return response.text().then(text => {
+                       console.error('Status:', response.status, '| Corpo da resposta:', text);
+                       throw new Error(`Erro ao buscar dados detalhados (status ${response.status}): ${text}`);
+                   });
+               }
+               return response.json();
+           })
+           .then(detalhes => {
+               let painelSomado = {};
+
+               detalhes.forEach(registro => {
+                   if (!registro.dados_completos) return;
+                   for (let tec in registro.dados_completos) {
+                       let d = registro.dados_completos[tec];
+                       if (!painelSomado[tec]) {
+                           painelSomado[tec] = JSON.parse(JSON.stringify(d));
+                       } else {
+                           painelSomado[tec].leiturasAtivas += d.leiturasAtivas || 0;
+                           painelSomado[tec].leiturasTotal += d.leiturasTotal || 0;
+                           painelSomado[tec].faturasNao += d.faturasNao || 0;
+                           painelSomado[tec].ocorrenciasAtivas += d.ocorrenciasAtivas || 0;
+                           painelSomado[tec].foraDaMediaCount += d.foraDaMediaCount || 0;
+                           painelSomado[tec].comunicados = (painelSomado[tec].comunicados || 0) + (d.comunicados || 0);
+
+                           for (let occ in d.listaOcorr) {
+                               painelSomado[tec].listaOcorr[occ] = (painelSomado[tec].listaOcorr[occ] || 0) + d.listaOcorr[occ];
+                           }
+
+                           painelSomado[tec].linhasOcorrencias.push(...(d.linhasOcorrencias || []));
+                           painelSomado[tec].linhasForaMedia.push(...(d.linhasForaMedia || []));
+                           painelSomado[tec].linhasNaoImpressas.push(...(d.linhasNaoImpressas || []));
+                       }
+                   }
+               });
+
+               window.dadosConsultaSomados = painelSomado;
+               if (btn) { btn.innerHTML = txtOriginal; btn.style.pointerEvents = 'auto'; }
+               renderizarPainelAPartirDeDados(painelSomado, window.totaisConsultaSomados);
+               if (typeof aposCarregar === 'function') aposCarregar();
+           })
+           .catch(error => {
+               console.error('Erro ao carregar painel somado:', error);
+               alert('Falha ao carregar o painel consolidado: ' + error.message);
+               if (btn) { btn.innerHTML = txtOriginal; btn.style.pointerEvents = 'auto'; }
+           });
+   }
+
+   // ─── Exporta o RELATÓRIO FINAL (Excel) do escopo atualmente filtrado na aba
+   // Consulta Servidor — ou seja, do Grupo/Cidade selecionados nos filtros acima.
+   // Se o Painel Somado ainda não foi carregado, carrega primeiro e só então exporta.
+   function exportarRelatorioFinalConsulta() {
+       if (!window.dadosConsultaSomados) {
+           carregarPainelConsulta(() => gerarPlanilhaRelatorioFinal());
+       } else {
+           gerarPlanilhaRelatorioFinal();
+       }
+   }
+
+   function gerarPlanilhaRelatorioFinal() {
+       const painel = window.dadosConsultaSomados || {};
+       const totais = window.totaisConsultaSomados || { ativos: 0, ocorrencias: 0, riscos: 0, estouros: 0, comunicados: 0 };
+       const filtro = window._filtroConsultaAtual || {};
+       const dataInicio = document.getElementById('filtroDataInicio').value || '-';
+       const dataFim = document.getElementById('filtroDataFim').value || '-';
+
+       if (Object.keys(painel).length === 0) { alert('Não há dados para gerar o relatório final. Carregue o Painel Somado primeiro.'); return; }
+
+       const wb = XLSX.utils.book_new();
+
+       // Aba 1: Resumo do relatório final (período + escopo + totais)
+       const resumoData = [
+           ['Relatório Final de Auditoria'],
+           ['Cidade', filtro.cidade || 'Todas'],
+           ['Grupo', filtro.grupo || 'Todos'],
+           ['Período', `${dataInicio} a ${dataFim}`],
+           [],
+           ['Fornecimentos Lidos', totais.ativos || 0],
+           ['Total de Ocorrências', totais.ocorrencias || 0],
+           ['Quedas Suspeitas (Risco)', totais.riscos || 0],
+           ['Estouros de Consumo', totais.estouros || 0],
+           ['Comunicados Impressos', totais.comunicados || 0]
+       ];
+       const wsResumo = XLSX.utils.aoa_to_sheet(resumoData);
+       wsResumo['!cols'] = [{ wch: 26 }, { wch: 20 }];
+       XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo');
+
+       // Aba 2: Detalhamento por leiturista
+       const colunasTec = [
+           { key: 'leiturista', label: 'Leiturista', wch: 26 },
+           { key: 'atc', label: 'ATC', wch: 10 },
+           { key: 'cidade', label: 'Cidade', wch: 20 },
+           { key: 'grupo', label: 'Grupo', wch: 10 },
+           { key: 'leiturasAtivas', label: 'Leituras Ativas', wch: 15 },
+           { key: 'leiturasTotal', label: 'Leituras Total', wch: 15 },
+           { key: 'ocorrenciasAtivas', label: 'Ocorrências', wch: 14 },
+           { key: 'foraDaMediaCount', label: 'Fora da Média', wch: 14 },
+           { key: 'faturasNao', label: 'Faturas Não Impressas', wch: 18 },
+           { key: 'comunicados', label: 'Comunicados', wch: 14 }
+       ];
+       const linhasTec = Object.keys(painel).map(nome => {
+           const t = painel[nome];
+           return {
+               leiturista: nome, atc: t.atc || '-', cidade: t.cidade || '-', grupo: t.grupo || '-',
+               leiturasAtivas: t.leiturasAtivas || 0, leiturasTotal: t.leiturasTotal || 0,
+               ocorrenciasAtivas: t.ocorrenciasAtivas || 0, foraDaMediaCount: t.foraDaMediaCount || 0,
+               faturasNao: t.faturasNao || 0, comunicados: t.comunicados || 0
+           };
+       });
+       const wsTecData = [colunasTec.map(c => c.label)];
+       linhasTec.forEach(obj => wsTecData.push(colunasTec.map(c => obj[c.key])));
+       const wsTec = XLSX.utils.aoa_to_sheet(wsTecData);
+       wsTec['!cols'] = colunasTec.map(c => ({ wch: c.wch }));
+       XLSX.utils.book_append_sheet(wb, wsTec, 'Por Leiturista');
+
+       // Aba 3: Todas as anomalias (quedas + estouros) do período/escopo
+       const linhasAnomalias = [];
+       for (let tec in painel) {
+           (painel[tec].linhasForaMedia || []).forEach(l => linhasAnomalias.push(Object.assign({ leiturista: tec }, l)));
+       }
+       if (linhasAnomalias.length > 0) {
+           const colunasAnom = [
+               { key: 'leiturista', label: 'Leiturista', wch: 26 },
+               { key: 'codigo', label: 'Fornecimento', wch: 14 },
+               { key: 'endereco', label: 'Endereço', wch: 34 },
+               { key: 'consumo', label: 'Consumo', wch: 10 },
+               { key: 'media', label: 'Média', wch: 10 },
+               { key: 'tipoAnomalia', label: 'Tipo', wch: 12 },
+               { key: 'causa', label: 'Causa Ocor.', wch: 22 },
+               { key: 'faturaRetida', label: 'Retida', wch: 10 }
+           ];
+           const wsAnomData = [colunasAnom.map(c => c.label)];
+           linhasAnomalias.forEach(obj => wsAnomData.push(colunasAnom.map(c => {
+               const v = obj[c.key]; return (v === undefined || v === null || v === "") ? "-" : v;
+           })));
+           const wsAnom = XLSX.utils.aoa_to_sheet(wsAnomData);
+           wsAnom['!cols'] = colunasAnom.map(c => ({ wch: c.wch }));
+           XLSX.utils.book_append_sheet(wb, wsAnom, 'Anomalias');
+       }
+
+       const sufixo = [filtro.cidade, filtro.grupo ? `G${filtro.grupo}` : ''].filter(Boolean).join('_') || 'geral';
+       XLSX.writeFile(wb, `relatorio_final_${sufixo.replace(/[^a-zA-Z0-9_]/g, '_')}_${dataArquivoAtual()}.xlsx`);
+   }
+
+function carregarPainelUnico(index) {
+    const registroClicado = window.registrosSalvos[index];
+
+    // Se já buscamos os dados_completos deste registro antes, usa o cache local
+    if (registroClicado.dados_completos) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        renderizarPainelAPartirDeDados(registroClicado.dados_completos, registroClicado.resumo || { ativos: 0, ocorrencias: 0, riscos: 0, estouros: 0, comunicados: 0 });
+        return;
+    }
+
+    const url = AUDITORIAS_ENDPOINT + `?select=dados_completos&id=eq.${registroClicado.id}`;
+
+    fetch(url, { method: 'GET', headers: headersSupabasePainel() })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error('Status:', response.status, '| Corpo da resposta:', text);
+                    throw new Error(`Erro ao buscar dados detalhados (status ${response.status}): ${text}`);
+                });
+            }
+            return response.json();
+        })
+        .then(resultado => {
+            const dadosParaRenderizar = resultado && resultado[0] ? resultado[0].dados_completos : null;
+
+            if (!dadosParaRenderizar) {
+                alert("Não há dados detalhados salvos.");
+                return;
+            }
+
+            // Guarda em cache local para não buscar de novo se clicar de novo neste registro
+            registroClicado.dados_completos = dadosParaRenderizar;
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            renderizarPainelAPartirDeDados(dadosParaRenderizar, registroClicado.resumo || { ativos: 0, ocorrencias: 0, riscos: 0, estouros: 0, comunicados: 0 });
+        })
+        .catch(error => {
+            console.error('Erro ao carregar painel único:', error);
+            alert('Falha ao carregar os dados detalhados: ' + error.message);
+        });
+}
+
+
+</script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"3317c77fdc004436bd772ef6d735d5ee","r":1}' crossorigin="anonymous"></script>
+</body>
+</html>
